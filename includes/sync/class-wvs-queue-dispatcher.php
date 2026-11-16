@@ -1,6 +1,6 @@
 <?php
 /**
- * Debounced Queue Dispatcher & Batch Sync
+ * Shutdown Queue Dispatcher & Action Scheduler Batcher
  * 
  * @package WooVariationStudio
  */
@@ -11,44 +11,66 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WVS_Queue_Dispatcher {
 
-    private static $pending_parents = [];
+    /**
+     * Array of parent IDs queued for sync during current request.
+     *
+     * @var array<int, bool>
+     */
+    private static $queued_parents = array();
 
+    /**
+     * Initialize hooks.
+     */
     public function __construct() {
-        add_action( 'shutdown', [ $this, 'process_shutdown_queue' ] );
+        add_action( 'wvs_queue_parent_sync', array( $this, 'process_parent_sync' ), 10, 1 );
+        add_action( 'shutdown', array( $this, 'dispatch_shutdown_queue' ) );
     }
 
+    /**
+     * Queue a parent product ID for background sync.
+     *
+     * @param int $parent_id Parent product ID.
+     */
     public static function queue_parent( $parent_id ) {
-        if ( $parent_id ) {
-            self::$pending_parents[ absint( $parent_id ) ] = true;
+        $parent_id = absint( $parent_id );
+        if ( $parent_id > 0 ) {
+            self::$queued_parents[ $parent_id ] = true;
         }
     }
 
-    public function process_shutdown_queue() {
-        if ( empty( self::$pending_parents ) ) {
+    /**
+     * Process queued parents during the PHP shutdown hook or Action Scheduler.
+     */
+    public function dispatch_shutdown_queue() {
+        if ( empty( self::$queued_parents ) ) {
             return;
         }
 
-        foreach ( array_keys( self::$pending_parents ) as $parent_id ) {
-            if ( class_exists( 'WVS_Stock_Calculator' ) ) {
-                $calculator = new WVS_Stock_Calculator();
-                $calculator->recalculate_parent_stock_and_images( $parent_id );
+        $parent_ids = array_keys( self::$queued_parents );
+        
+        // If bulk update exceeds 5 parent products, offload to Action Scheduler if available.
+        if ( count( $parent_ids ) > 5 && function_exists( 'as_enqueue_async_action' ) ) {
+            foreach ( $parent_ids as $pid ) {
+                as_enqueue_async_action( 'wvs_queue_parent_sync', array( 'parent_id' => $pid ), 'woo-variation-studio' );
+            }
+        } else {
+            foreach ( $parent_ids as $pid ) {
+                self::process_parent_sync( $pid );
             }
         }
 
-        self::$pending_parents = [];
+        self::$queued_parents = array();
+    }
+
+    /**
+     * Run synchronization for a given parent ID.
+     *
+     * @param int $parent_id Parent product ID.
+     */
+    public function process_parent_sync( $parent_id ) {
+        $parent_id = absint( $parent_id );
+        if ( $parent_id > 0 && class_exists( 'WVS_Stock_Calculator' ) ) {
+            WVS_Stock_Calculator::sync_parent_stock_and_images( $parent_id );
+        }
     }
 }
-```
----
-
-### Step-by-Step Guidance for Phase 3
-
-1. **Create Stock Calculator File:**
-   - In your GitHub repository, create or update: `includes/sync/class-wvs-stock-calculator.php`
-   - Copy the code from the first block above and commit changes.
-
-2. **Create Queue Dispatcher File:**
-   - In your GitHub repository, create or update: `includes/sync/class-wvs-queue-dispatcher.php`
-   - Copy the code from the second block above and commit changes.
-
-Once committed, let me know and we will proceed to **Phase 4 (Frontend Swatches, Two-Way Matrix & Gallery Isolation)**!

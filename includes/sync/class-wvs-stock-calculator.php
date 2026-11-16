@@ -1,6 +1,6 @@
 <?php
 /**
- * Stock Winner Calculator & Auto-Copy Gallery Engine
+ * Stock Calculator & Auto-Copy Gallery Autopilot Engine
  * 
  * @package WooVariationStudio
  */
@@ -16,14 +16,31 @@ class WVS_Stock_Calculator {
         add_action( 'woocommerce_save_product_variation', [ $this, 'handle_variation_save' ], 20, 2 );
         add_action( 'woocommerce_variation_set_stock', [ $this, 'handle_stock_change' ], 20, 1 );
         add_action( 'woocommerce_product_set_stock', [ $this, 'handle_stock_change' ], 20, 1 );
+        
+        // Hook into product import & update hooks
+        add_action( 'woocommerce_product_import_inserted_product_object', [ $this, 'handle_imported_product' ], 20, 2 );
     }
 
     public function handle_variation_save( $variation_id, $i ) {
         $variation = wc_get_product( $variation_id );
-        if ( $variation && $variation->get_parent_id() ) {
-            $parent_id = $variation->get_parent_id();
-            $this->maybe_copy_sibling_galleries( $variation, $parent_id );
-            $this->recalculate_parent_stock_and_images( $parent_id );
+        if ( ! $variation ) {
+            return;
+        }
+        
+        $parent_id = $variation->get_parent_id();
+        if ( ! $parent_id ) {
+            return;
+        }
+
+        // 1. Auto-copy variation gallery across sibling sizes of the same colourway if enabled
+        $settings = get_option( 'wvs_global_settings', [] );
+        if ( ! empty( $settings['auto_copy_galleries'] ) && 'yes' === $settings['auto_copy_galleries'] ) {
+            $this->auto_copy_sibling_galleries( $variation );
+        }
+
+        // 2. Run stock winner autopilot
+        if ( ! empty( $settings['auto_stock_winner'] ) && 'yes' === $settings['auto_stock_winner'] ) {
+            self::sync_parent_stock_and_images( $parent_id );
         }
     }
 
@@ -31,72 +48,81 @@ class WVS_Stock_Calculator {
         if ( ! $product ) {
             return;
         }
+
+        $parent_id = 0;
         if ( $product->is_type( 'variation' ) ) {
-            $this->recalculate_parent_stock_and_images( $product->get_parent_id() );
+            $parent_id = $product->get_parent_id();
         } elseif ( $product->is_type( 'variable' ) ) {
-            $this->recalculate_parent_stock_and_images( $product->get_id() );
+            $parent_id = $product->get_id();
+        }
+
+        if ( $parent_id ) {
+            self::sync_parent_stock_and_images( $parent_id );
         }
     }
 
-    /**
-     * Automatically copy variation gallery images across sibling sizes of the same colorway
-     */
-    private function maybe_copy_sibling_galleries( $saved_variation, $parent_id ) {
-        $settings = get_option( 'wvs_global_settings', [] );
-        if ( empty( $settings['auto_copy_galleries'] ) || 'yes' !== $settings['auto_copy_galleries'] ) {
+    public function handle_imported_product( $product, $row ) {
+        if ( $product && $product->is_type( 'variable' ) ) {
+            self::sync_parent_stock_and_images( $product->get_id() );
+        }
+    }
+
+    private function auto_copy_sibling_galleries( $target_variation ) {
+        $parent_id = $target_variation->get_parent_id();
+        $parent = wc_get_product( $parent_id );
+        if ( ! $parent || ! $parent->is_type( 'variable' ) ) {
             return;
         }
 
-        $saved_gallery = get_post_meta( $saved_variation->get_id(), '_wc_variation_gallery_ids', true );
-        if ( empty( $saved_gallery ) ) {
+        $target_image_id = $target_variation->get_image_id();
+        $target_gallery  = get_post_meta( $target_variation->get_id(), '_wc_variation_gallery_ids', true );
+
+        if ( ! $target_image_id && empty( $target_gallery ) ) {
             return;
         }
 
-        // Identify the color attribute of this variation
-        $attributes = $saved_variation->get_variation_attributes( false );
-        $color_key  = '';
-        $color_val  = '';
-        
-        foreach ( $attributes as $key => $val ) {
-            if ( false !== strpos( strtolower( $key ), 'color' ) || false !== strpos( strtolower( $key ), 'colour' ) ) {
-                $color_key = $key;
-                $color_val = $val;
+        // Detect primary colour attribute of target variation
+        $attributes = $target_variation->get_variation_attributes( false );
+        $colour_key = '';
+        $colour_val = '';
+
+        foreach ( $attributes as $attr_key => $attr_val ) {
+            if ( strpos( $attr_key, 'color' ) !== false || strpos( $attr_key, 'colour' ) !== false ) {
+                $colour_key = $attr_key;
+                $colour_val = $attr_val;
                 break;
             }
         }
 
-        if ( ! $color_key || ! $color_val ) {
+        if ( ! $colour_key ) {
             return;
         }
 
-        $parent = wc_get_product( $parent_id );
-        if ( ! $parent ) {
-            return;
-        }
-
-        foreach ( $parent->get_children() as $child_id ) {
-            if ( $child_id === $saved_variation->get_id() ) {
+        // Sibling sync across same colour
+        $children = $parent->get_children();
+        foreach ( $children as $child_id ) {
+            if ( $child_id === $target_variation->get_id() ) {
                 continue;
             }
             $child_var = wc_get_product( $child_id );
             if ( ! $child_var ) {
                 continue;
             }
+
             $child_attrs = $child_var->get_variation_attributes( false );
-            if ( isset( $child_attrs[ $color_key ] ) && $child_attrs[ $color_key ] === $color_val ) {
-                // If sibling has no gallery yet, copy it
-                $child_gallery = get_post_meta( $child_id, '_wc_variation_gallery_ids', true );
-                if ( empty( $child_gallery ) ) {
-                    update_post_meta( $child_id, '_wc_variation_gallery_ids', $saved_gallery );
+            if ( isset( $child_attrs[ $colour_key ] ) && $child_attrs[ $colour_key ] === $colour_val ) {
+                if ( $target_image_id && ! $child_var->get_image_id() ) {
+                    $child_var->set_image_id( $target_image_id );
                 }
+                if ( ! empty( $target_gallery ) && ! get_post_meta( $child_id, '_wc_variation_gallery_ids', true ) ) {
+                    update_post_meta( $child_id, '_wc_variation_gallery_ids', $target_gallery );
+                }
+                $child_var->save();
             }
         }
     }
 
-    /**
-     * Recalculate parent product main image and gallery based on highest-stock winner
-     */
-    public function recalculate_parent_stock_and_images( $parent_id ) {
+    public static function sync_parent_stock_and_images( $parent_id ) {
         $parent = wc_get_product( $parent_id );
         if ( ! $parent || ! $parent->is_type( 'variable' ) ) {
             return;
@@ -130,60 +156,45 @@ class WVS_Stock_Calculator {
             return;
         }
 
-        // Sort by highest stock descending
+        // Sort descending by stock quantity
         usort( $in_stock_variations, function( $a, $b ) {
             return $b['stock'] <=> $a['stock'];
-        } );
+        });
 
-        // 1. Set Winner Image as Parent Main Image
+        // 1. Set highest stock variation image as parent main image
         $winning_image_id = $in_stock_variations[0]['image_id'];
         $parent->set_image_id( $winning_image_id );
 
-        // 2. Build In-Stock Gallery IDs
-        $gallery_ids = [];
+        // 2. Build strict gallery pool from in-stock variation images
+        $gallery_image_ids = [];
         foreach ( $in_stock_variations as $var_data ) {
             if ( $var_data['image_id'] != $winning_image_id ) {
-                $gallery_ids[] = $var_data['image_id'];
+                $gallery_image_ids[] = $var_data['image_id'];
             }
-            // Also include extra gallery images assigned to this variation
+            // Include custom variation gallery IDs if present
             $extra_gallery = get_post_meta( $var_data['id'], '_wc_variation_gallery_ids', true );
             if ( ! empty( $extra_gallery ) ) {
-                $extra_ids = explode( ',', $extra_gallery );
-                foreach ( $extra_ids as $eid ) {
-                    if ( $eid && $eid != $winning_image_id ) {
-                        $gallery_ids[] = (int) $eid;
+                if ( is_string( $extra_gallery ) ) {
+                    $extra_gallery = explode( ',', $extra_gallery );
+                }
+                foreach ( $extra_gallery as $ext_id ) {
+                    if ( $ext_id && $ext_id != $winning_image_id ) {
+                        $gallery_image_ids[] = (int) $ext_id;
                     }
                 }
             }
         }
+        $gallery_image_ids = array_values( array_unique( $gallery_image_ids ) );
+        $parent->set_gallery_image_ids( $gallery_image_ids );
 
-        $gallery_ids = array_values( array_unique( $gallery_ids ) );
-        $parent->set_gallery_image_ids( $gallery_ids );
-
-        // 3. Set Default Pre-selected Attributes
+        // 3. Set default selected variation to match winning stock item
         $parent->set_default_attributes( $in_stock_variations[0]['attributes'] );
 
         $parent->save();
 
-        // Log audit record
-        self::log_audit( $parent_id, 'stock_recalculation', 0, $in_stock_variations[0]['id'], 0, $winning_image_id, $in_stock_variations[0]['stock'] );
-    }
-
-    private static function log_audit( $parent_id, $source, $old_var, $new_var, $old_img, $new_img, $stock ) {
-        global $wpdb;
-        $table = $wpdb->prefix . 'wvs_sync_audit_log';
-        $wpdb->insert(
-            $table,
-            [
-                'parent_id'         => $parent_id,
-                'trigger_source'    => $source,
-                'old_winner_var_id' => $old_var,
-                'new_winner_var_id' => $new_var,
-                'old_image_id'      => $old_img,
-                'new_image_id'      => $new_img,
-                'stock_snapshot'    => $stock,
-            ],
-            [ '%d', '%s', '%d', '%d', '%d', '%d', '%d' ]
-        );
+        // 4. Save precomputed cache for frontend
+        if ( class_exists( 'WVS_Cache_Manager' ) ) {
+            WVS_Cache_Manager::rebuild_product_cache( $parent_id );
+        }
     }
 }

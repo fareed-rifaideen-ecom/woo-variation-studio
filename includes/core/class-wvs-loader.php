@@ -1,6 +1,6 @@
 <?php
 /**
- * Core Service Loader & Hook Registry
+ * Core Loader / Service Container
  * 
  * @package WooVariationStudio
  */
@@ -11,61 +11,52 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WVS_Loader {
 
-    public function init() {
-        // Include core service components
-        $this->include_files();
-        $this->register_services();
+    public function __construct() {
+        $this->load_dependencies();
+        $this->init_hooks();
     }
 
-    private function include_files() {
+    private function load_dependencies() {
+        $plugin_dir = plugin_dir_path( dirname( __FILE__ ) );
+
+        // Define all blueprint files
         $files = [
-            'includes/core/class-wvs-cache-manager.php',
-            'includes/rules/class-wvs-inheritance-engine.php',
-            'includes/admin/class-wvs-admin-menu.php',
-            'includes/admin/class-wvs-attribute-fields.php',
-            'includes/admin/class-wvs-native-wc-fields.php',
-            'includes/admin/class-wvs-taxonomy-fields.php',
-            'includes/sync/class-wvs-stock-calculator.php',
-            'includes/sync/class-wvs-queue-dispatcher.php',
-            'includes/frontend/class-wvs-pdp-renderer.php',
-            'includes/frontend/class-wvs-catalog-cards.php',
-            'includes/frontend/class-wvs-cart-thumbnails.php',
-            'includes/seo/class-wvs-schema-renderer.php',
+            'core/class-wvs-cache-manager.php',
+            'admin/class-wvs-admin-menu.php',
+            'admin/class-wvs-attribute-fields.php',
+            'admin/class-wvs-native-wc-fields.php',
+            'admin/class-wvs-taxonomy-fields.php',
+            'rules/class-wvs-inheritance-engine.php',
+            'sync/class-wvs-stock-calculator.php',
+            'sync/class-wvs-queue-dispatcher.php',
+            'frontend/class-wvs-pdp-renderer.php',
+            'frontend/class-wvs-catalog-cards.php',
+            'frontend/class-wvs-cart-thumbnails.php',
+            'seo/class-wvs-schema-renderer.php'
         ];
 
+        // Safe Load: Only require files if they actually exist in the folder
         foreach ( $files as $file ) {
-            $filepath = WVS_PLUGIN_DIR . $file;
-            if ( file_exists( $filepath ) ) {
-                require_once $filepath;
+            if ( file_exists( $plugin_dir . $file ) ) {
+                require_once $plugin_dir . $file;
             }
         }
     }
 
-    private function register_services() {
-        // Instantiate core controllers if classes exist
+    private function init_hooks() {
+        // Initialize Admin Menu if class exists
         if ( class_exists( 'WVS_Admin_Menu' ) ) {
             new WVS_Admin_Menu();
         }
-        if ( class_exists( 'WVS_Attribute_Fields' ) ) {
-            new WVS_Attribute_Fields();
+        
+        // Initialize Inheritance Engine if class exists
+        if ( class_exists( 'WVS_Inheritance_Engine' ) ) {
+            new WVS_Inheritance_Engine();
         }
-        if ( class_exists( 'WVS_Native_WC_Fields' ) ) {
-            new WVS_Native_WC_Fields();
-        }
-        if ( class_exists( 'WVS_Stock_Calculator' ) ) {
-            new WVS_Stock_Calculator();
-        }
-        if ( class_exists( 'WVS_Queue_Dispatcher' ) ) {
-            new WVS_Queue_Dispatcher();
-        }
+
+        // Initialize Frontend Renderer if class exists
         if ( class_exists( 'WVS_PDP_Renderer' ) ) {
             new WVS_PDP_Renderer();
-        }
-        if ( class_exists( 'WVS_Catalog_Cards' ) ) {
-            new WVS_Catalog_Cards();
-        }
-        if ( class_exists( 'WVS_Schema_Renderer' ) ) {
-            new WVS_Schema_Renderer();
         }
     }
 }

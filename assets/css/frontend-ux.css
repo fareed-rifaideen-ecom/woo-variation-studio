@@ -1,0 +1,113 @@
+/
+
+Frontend Swatches, Cross-Attribute Availability & Flatsome UX Styles
+
+@package WooVariationStudio
+*/
+
+.wvs-swatch-container {
+margin-bottom: 15px;
+}
+
+.wvs-swatch-list {
+display: flex;
+flex-wrap: wrap;
+gap: 8px;
+align-items: center;
+}
+
+.wvs-swatch-item {
+display: inline-flex;
+align-items: center;
+justify-content: center;
+cursor: pointer;
+position: relative;
+transition: all 0.2s ease-in-out;
+user-select: none;
+}
+
+/* Shape: Circle (Colour Swatches) */
+.wvs-swatch-item.wvs-shape-circle {
+width: 38px;
+height: 38px;
+border-radius: 50%;
+border: 2px solid #e2e8f0;
+box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
+}
+
+.wvs-swatch-item.wvs-shape-circle.selected {
+border-color: #0f172a;
+box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0f172a;
+}
+
+/* Shape: Image Swatches */
+.wvs-swatch-item.wvs-shape-image {
+width: 52px;
+height: 52px;
+border-radius: 6px;
+background-size: cover;
+background-position: center;
+border: 2px solid #e2e8f0;
+}
+
+.wvs-swatch-item.wvs-shape-image.selected {
+border-color: #0f172a;
+box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0f172a;
+}
+
+/* Shape: Button Boxes (Sizes & Specs) */
+.wvs-swatch-item.wvs-shape-button {
+padding: 8px 16px;
+background: #ffffff;
+color: #0f172a !important;
+border: 1.5px solid #cbd5e1;
+border-radius: 4px;
+font-size: 13px;
+font-weight: 600;
+min-width: 44px;
+text-align: center;
+}
+
+.wvs-swatch-item.wvs-shape-button.selected {
+background: #0f172a !important;
+color: #ffffff !important;
+border-color: #0f172a !important;
+}
+
+/* Out of stock strike-through state */
+.wvs-swatch-item.is-oos-in-combo {
+opacity: 0.4;
+text-decoration: line-through;
+pointer-events: none;
+position: relative;
+}
+.wvs-swatch-item.is-oos-in-combo::after {
+content: "";
+position: absolute;
+top: 50%;
+left: 0;
+width: 100%;
+height: 1.5px;
+background: #ef4444;
+transform: rotate(-15deg);
+}
+
+/* Tooltip */
+.wvs-tooltip {
+display: none;
+position: absolute;
+bottom: 120%;
+left: 50%;
+transform: translateX(-50%);
+background: #0f172a;
+color: #fff;
+padding: 4px 8px;
+font-size: 11px;
+border-radius: 3px;
+white-space: nowrap;
+z-index: 10;
+}
+.wvs-swatch-item:hover .wvs-tooltip {
+display: block;
+}
+

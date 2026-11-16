@@ -1,42 +1,30 @@
 <?php
 /**
  * Plugin Name: Woo Variation Studio
- * Plugin URI:  https://github.com/fareed-rifaideen-ecom/woo-variation-studio
- * Description: Advanced multi-attribute swatches, strict gallery isolation, and automated highest-stock image autopilot for WooCommerce and Flatsome.
- * Version:     2.5.0
- * Author:      Woo Variation Studio Developer
+ * Plugin URI: https://github.com/fareed-rifaideen-ecom/woo-variation-studio
+ * Description: Automated highest-stock variation gallery synchronization, multi-attribute swatches, and strict gallery isolation for WooCommerce and Flatsome.
+ * Version: 2.5.0
+ * Author: Fareed M. Rifaideen
  * Text Domain: woo-variation-studio
- * Domain Path: /languages
- * Requires at least: 6.2
- * Requires PHP:      8.0
  * WC requires at least: 8.0
- * WC tested up to: 9.5.0
+ * WC tested up to: 11.3
  */
 
 if ( ! defined( 'ABSPATH' ) ) {
     exit;
 }
 
-// Define Plugin Constants
-define( 'WVS_VERSION', '2.5.0' );
-define( 'WVS_PLUGIN_FILE', __FILE__ );
-define( 'WVS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
-define( 'WVS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
-define( 'WVS_BASENAME', plugin_basename( __FILE__ ) );
-
-/**
- * Declare High-Performance Order Storage (HPOS) Compatibility
- */
+// Declare WooCommerce HPOS (High-Performance Order Storage) compatibility
 add_action( 'before_woocommerce_init', function() {
     if ( class_exists( \Automattic\WooCommerce\Utilities\FeaturesUtil::class ) ) {
         \Automattic\WooCommerce\Utilities\FeaturesUtil::declare_compatibility( 'custom_order_tables', __FILE__, true );
     }
-} );
+});
 
 /**
  * Main Plugin Bootstrap Class
  */
-final class Woo_Variation_Studio {
+class Woo_Variation_Studio {
 
     private static $instance = null;
 
@@ -48,39 +36,57 @@ final class Woo_Variation_Studio {
     }
 
     private function __construct() {
-        $this->init_hooks();
+        $this->define_constants();
+        $this->init();
     }
 
-    private function init_hooks() {
-        register_activation_hook( WVS_PLUGIN_FILE, [ $this, 'activate' ] );
-        register_deactivation_hook( WVS_PLUGIN_FILE, [ $this, 'deactivate' ] );
-        
-        add_action( 'plugins_loaded', [ $this, 'load_dependencies' ] );
+    private function define_constants() {
+        define( 'WVS_VERSION', '2.5.0' );
+        define( 'WVS_PLUGIN_FILE', __FILE__ );
+        define( 'WVS_PLUGIN_DIR', plugin_dir_path( __FILE__ ) );
+        define( 'WVS_PLUGIN_URL', plugin_dir_url( __FILE__ ) );
     }
 
-    public function activate() {
-        require_once WVS_PLUGIN_DIR . 'includes/core/class-wvs-activator.php';
-        WVS_Activator::activate();
+    private function init() {
+        // Check if WooCommerce is active before loading core files
+        add_action( 'plugins_loaded', [ $this, 'load_plugin' ] );
+
+        // Activation / Deactivation hooks
+        register_activation_hook( __FILE__, [ 'WVS_Activator', 'activate' ] );
+        register_deactivation_hook( __FILE__, [ 'WVS_Activator', 'deactivate' ] );
     }
 
-    public function deactivate() {
-        require_once WVS_PLUGIN_DIR . 'includes/core/class-wvs-activator.php';
-        WVS_Activator::deactivate();
-    }
+    public function load_plugin() {
+        if ( ! class_exists( 'WooCommerce' ) ) {
+            add_action( 'admin_notices', function() {
+                echo '<div class="error"><p><strong>Woo Variation Studio</strong> requires WooCommerce to be installed and active.</p></div>';
+            } );
+            return;
+        }
 
-    public function load_dependencies() {
-        // Load Core Loader
-        require_once WVS_PLUGIN_DIR . 'includes/core/class-wvs-loader.php';
-        
-        $loader = new WVS_Loader();
-        $loader->init();
+        // Load Loader class safely
+        $loader_file = WVS_PLUGIN_DIR . 'includes/core/class-wvs-loader.php';
+        if ( file_exists( $loader_file ) ) {
+            require_once $loader_file;
+            if ( class_exists( 'WVS_Loader' ) ) {
+                new WVS_Loader();
+            }
+        }
     }
 }
 
-/**
-     * Initialize Woo Variation Studio
-     */
+// Kick off the plugin
 function wvs_init() {
     return Woo_Variation_Studio::instance();
 }
 wvs_init();
+```[cite: 11]
+
+---
+
+### How to Apply & Verify
+1. Commit the updated `woo-variation-studio.php` file to your GitHub repository.
+2. If your site was locked out, deactivate and reactivate **Woo Variation Studio** from your WordPress Plugins dashboard.
+3. If any minor warning or notice appears, enabling `WP_DEBUG` in your `wp-config.php` will display the exact line number so we can fine-tune it immediately. 
+
+Let me know once you have pushed this update!

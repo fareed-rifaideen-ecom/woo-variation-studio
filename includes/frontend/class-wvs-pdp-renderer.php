@@ -1,6 +1,6 @@
 <?php
 /**
- * Single Product Page (PDP) Swatch, Gallery Isolation & Fulfilment Renderer
+ * Single Product Page Swatch Renderer & Flatsome Gallery Bridge
  *
  * File Path: includes/frontend/class-wvs-pdp-renderer.php
  *
@@ -43,10 +43,10 @@ class WVS_PDP_Renderer {
 		add_action( 'woocommerce_single_product_summary', array( $this, 'render_brand_eyebrow' ), 4 );
 		add_action( 'woocommerce_single_product_summary', array( $this, 'render_pdp_subtitle' ), 6 );
 
-		// Replace standard WooCommerce dropdowns with Emran-style Swatches while keeping native <select> for WC JS.
+		// Replace standard WooCommerce dropdowns with interactive swatches while keeping native <select> synced.
 		add_filter( 'woocommerce_dropdown_variation_attribute_options_html', array( $this, 'render_swatch_selector_html' ), 20, 2 );
 
-		// Bypass 30-variation AJAX threshold so two-way Size <-> Colour availability always works instantly.
+		// Increase variation threshold so multi-attribute products (2-4 attributes) preload stock status cleanly.
 		add_filter( 'woocommerce_ajax_variation_threshold', array( $this, 'increase_variation_threshold' ), 20, 2 );
 
 		// Attach variation-specific gallery array for Flatsome Flickity slider isolation.
@@ -58,7 +58,7 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Enqueue frontend CSS and JS assets.
+	 * Enqueue frontend CSS and JS assets and inject dynamic CSS custom properties.
 	 */
 	public function enqueue_frontend_assets() {
 		$css_path = WVS_PLUGIN_DIR . 'assets/css/frontend-ux.css';
@@ -74,6 +74,20 @@ class WVS_PDP_Renderer {
 			$css_ver
 		);
 
+		$settings = class_exists( 'WVS_Inheritance_Engine' )
+			? WVS_Inheritance_Engine::get_global_settings()
+			: get_option( 'wvs_global_settings', array() );
+
+		$swatch_width  = isset( $settings['swatch_width'] ) ? max( 20, absint( $settings['swatch_width'] ) ) : 42;
+		$swatch_height = isset( $settings['swatch_height'] ) ? max( 20, absint( $settings['swatch_height'] ) ) : 42;
+
+		$inline_css = sprintf(
+			':root { --wvs-swatch-width: %dpx; --wvs-swatch-height: %dpx; }',
+			$swatch_width,
+			$swatch_height
+		);
+		wp_add_inline_style( 'wvs-frontend-ux', $inline_css );
+
 		wp_enqueue_script(
 			'wvs-frontend-ux',
 			WVS_PLUGIN_URL . 'assets/js/frontend-ux.js',
@@ -82,13 +96,11 @@ class WVS_PDP_Renderer {
 			true
 		);
 
-		$settings = class_exists( 'WVS_Inheritance_Engine' )
-			? WVS_Inheritance_Engine::get_global_settings()
-			: get_option( 'wvs_global_settings', array() );
-
-		$cross_mode = isset( $settings['cross_attr_mode'] ) ? (string) $settings['cross_attr_mode'] : 'smart_switch';
-		$strict_iso = isset( $settings['strict_gallery_isolation'] ) ? (string) $settings['strict_gallery_isolation'] : 'yes';
-		$active_sty = isset( $settings['swatch_active_style'] ) ? (string) $settings['swatch_active_style'] : 'option_4a';
+		$cross_mode       = isset( $settings['cross_attr_mode'] ) ? (string) $settings['cross_attr_mode'] : 'smart_switch';
+		$disabled_effect  = isset( $settings['disabled_attribute_effect'] ) ? (string) $settings['disabled_attribute_effect'] : 'cross';
+		$strict_iso       = isset( $settings['strict_gallery_isolation'] ) ? (string) $settings['strict_gallery_isolation'] : 'yes';
+		$show_sel_label   = isset( $settings['show_selected_label'] ) ? (string) $settings['show_selected_label'] : 'yes';
+		$enable_tooltip   = isset( $settings['enable_tooltip'] ) ? (string) $settings['enable_tooltip'] : 'yes';
 
 		wp_localize_script(
 			'wvs-frontend-ux',
@@ -96,8 +108,10 @@ class WVS_PDP_Renderer {
 			array(
 				'ajaxUrl'                => admin_url( 'admin-ajax.php' ),
 				'crossAttrMode'          => $cross_mode,
+				'disabledEffect'         => $disabled_effect,
 				'strictGalleryIsolation' => ( 'yes' === $strict_iso || 'strict_variation' === $strict_iso ),
-				'activeSwatchStyle'      => $active_sty,
+				'showSelectedLabel'      => ( 'yes' === $show_sel_label ),
+				'enableTooltip'          => ( 'yes' === $enable_tooltip ),
 				'i18n'                   => array(
 					'outOfStock' => __( 'Out of stock in this combination', 'woo-variation-studio' ),
 					'selectSize' => __( 'Select an option', 'woo-variation-studio' ),
@@ -107,7 +121,7 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Add helper classes to body for sticky desktop gallery and active swatch contrast style.
+	 * Add helper classes to body for sticky desktop gallery, swatch shape, and out-of-stock effect.
 	 *
 	 * @param array<int, string> $classes Body classes.
 	 * @return array<int, string>
@@ -125,8 +139,10 @@ class WVS_PDP_Renderer {
 			$classes[] = 'wvs-sticky-desktop-gallery';
 		}
 
-		$active_style = isset( $settings['swatch_active_style'] ) ? sanitize_html_class( (string) $settings['swatch_active_style'] ) : 'option_4a';
-		$classes[]    = 'wvs-active-style-' . $active_style;
+		$shape            = isset( $settings['swatch_shape'] ) ? sanitize_html_class( (string) $settings['swatch_shape'] ) : 'rounded';
+		$disabled_effect  = isset( $settings['disabled_attribute_effect'] ) ? sanitize_html_class( (string) $settings['disabled_attribute_effect'] ) : 'cross';
+		$classes[]        = 'wvs-shape-style-' . $shape;
+		$classes[]        = 'wvs-oos-effect-' . $disabled_effect;
 
 		return $classes;
 	}
@@ -177,18 +193,7 @@ class WVS_PDP_Renderer {
 			return;
 		}
 
-		$settings  = class_exists( 'WVS_Inheritance_Engine' ) ? WVS_Inheritance_Engine::get_global_settings() : array();
-		$meta_mode = isset( $settings['pdp_header_meta_mode'] ) ? (string) $settings['pdp_header_meta_mode'] : 'option_2a';
-
-		if ( 'option_2b' === $meta_mode ) {
-			return;
-		}
-
 		$subtitle = get_post_meta( $product->get_id(), '_wvs_spec_subtitle', true );
-		if ( empty( $subtitle ) ) {
-			$subtitle = get_post_meta( $product->get_id(), '_cux_spec_subtitle', true );
-		}
-
 		if ( ! empty( $subtitle ) ) {
 			printf(
 				'<p class="wvs-pdp-spec-subtitle">%s</p>',
@@ -198,65 +203,72 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Increase variation threshold so multi-attribute bikes (2-4 attributes) preload stock status cleanly.
+	 * Increase variation threshold so multi-attribute products preload stock status cleanly.
 	 *
 	 * @param int        $threshold Default threshold (30).
 	 * @param WC_Product $product   Product object.
 	 * @return int
 	 */
 	public function increase_variation_threshold( $threshold, $product ) {
-		return 120;
+		return 150;
 	}
 
 	/**
-	 * Render interactive Swatches (Image, Colour/Split Circle, or Button Pill) while keeping native <select> hidden.
+	 * Render interactive Swatches (Color, Image, Button, Radio, or Dropdown) while keeping native <select> synced.
 	 *
-	 * @param string              $htmlSelect Native select dropdown HTML.
-	 * @param array<string,mixed> $args       Dropdown arguments.
+	 * @param string              $html_select Native select dropdown HTML.
+	 * @param array<string,mixed> $args        Dropdown arguments.
 	 * @return string
 	 */
-	public function render_swatch_selector_html( $htmlSelect, $args ) {
+	public function render_swatch_selector_html( $html_select, $args ) {
 		$product   = isset( $args['product'] ) ? $args['product'] : null;
 		$attribute = isset( $args['attribute'] ) ? (string) $args['attribute'] : '';
 		$options   = isset( $args['options'] ) && is_array( $args['options'] ) ? $args['options'] : array();
 		$selected  = isset( $args['selected'] ) ? (string) $args['selected'] : '';
 
 		if ( ! $product instanceof WC_Product || empty( $attribute ) || empty( $options ) ) {
-			return $htmlSelect;
+			return $html_select;
 		}
 
-		$display_mode = $this->resolve_attribute_display_mode( $attribute );
-		$is_visual    = in_array( $display_mode, array( 'auto_image', 'color_circle', 'custom_image' ), true );
+		$settings            = class_exists( 'WVS_Inheritance_Engine' ) ? WVS_Inheritance_Engine::get_global_settings() : get_option( 'wvs_global_settings', array() );
+		$variation_thumbs    = $this->get_variation_thumbnails_for_attribute( $product, $attribute );
+		$display_mode        = $this->resolve_attribute_display_mode( $attribute, $variation_thumbs );
 
-		// Map variation thumbnails per attribute term value for Auto Variation Thumbnail mode.
-		$term_variation_Thumbnails = $this->get_variation_thumbnails_for_attribute( $product, $attribute );
+		// If explicitly configured to remain a standard WooCommerce dropdown, return unmodified.
+		if ( 'dropdown' === $display_mode ) {
+			return $html_select;
+		}
+
+		$is_visual       = in_array( $display_mode, array( 'auto_image', 'image', 'color_circle', 'color' ), true );
+		$shape           = isset( $settings['swatch_shape'] ) ? (string) $settings['swatch_shape'] : 'rounded';
+		$enable_tooltip  = ! isset( $settings['enable_tooltip'] ) || 'yes' === $settings['enable_tooltip'];
+		$selected_label  = $this->get_readable_term_label( $attribute, $selected );
 
 		// Hide native <select> visually so WooCommerce variation script remains synced.
-		$hidden_select = '<div class="wvs-hidden-select-wrap" style="display:none !important;">' . $htmlSelect . '</div>';
+		$hidden_select = '<div class="wvs-hidden-select-wrap" style="display:none !important;">' . $html_select . '</div>';
 
 		ob_start();
 		?>
-		<div class="wvs-swatches-container"
+		<div class="wvs-swatches-container wvs-shape-<?php echo esc_attr( $shape ); ?>"
 			data-attribute_name="attribute_<?php echo esc_attr( sanitize_title( $attribute ) ); ?>"
 			data-raw-attribute="<?php echo esc_attr( $attribute ); ?>"
 			data-display-mode="<?php echo esc_attr( $display_mode ); ?>"
+			data-selected-label="<?php echo esc_attr( $selected_label ); ?>"
 			data-is-visual="<?php echo $is_visual ? 'yes' : 'no'; ?>">
-
-			<div class="wvs-selected-label-row">
-				<span class="wvs-selected-term-value"><?php echo esc_html( $this->get_Readable_term_label( $attribute, $selected ) ); ?></span>
-			</div>
 
 			<div class="wvs-swatches-list wvs-mode-<?php echo esc_attr( $display_mode ); ?>" role="radiogroup">
 				<?php
 				foreach ( $options as $option_slug ) {
 					$option_slug = (string) $option_slug;
 					$is_selected = ( sanitize_title( $selected ) === sanitize_title( $option_slug ) || $selected === $option_slug );
-					$term_label  = $this->get_Readable_term_label( $attribute, $option_slug );
-					$swatch_meta = $this->get_term_swatch_metadata( $attribute, $option_slug, $term_variation_Thumbnails );
+					$term_label  = $this->get_readable_term_label( $attribute, $option_slug );
+					$swatch_meta = $this->get_term_swatch_metadata( $attribute, $option_slug, $display_mode, $variation_thumbs );
+					$tooltip_txt = ! empty( $swatch_meta['tooltip'] ) ? $swatch_meta['tooltip'] : $term_label;
 
 					$item_classes = array(
 						'wvs-swatch-item',
 						'wvs-swatch-type-' . esc_attr( $swatch_meta['render_type'] ),
+						'wvs-shape-' . esc_attr( $shape ),
 					);
 					if ( $is_selected ) {
 						$item_classes[] = 'selected';
@@ -267,8 +279,12 @@ class WVS_PDP_Renderer {
 						class="<?php echo esc_attr( implode( ' ', $item_classes ) ); ?>"
 						data-value="<?php echo esc_attr( $option_slug ); ?>"
 						data-label="<?php echo esc_attr( $term_label ); ?>"
-						title="<?php echo esc_attr( $term_label ); ?>"
+						aria-label="<?php echo esc_attr( $term_label ); ?>"
 						aria-pressed="<?php echo $is_selected ? 'true' : 'false'; ?>">
+
+						<?php if ( $enable_tooltip && 'radio' !== $swatch_meta['render_type'] ) : ?>
+							<span class="wvs-swatch-tooltip" role="tooltip"><?php echo esc_html( $tooltip_txt ); ?></span>
+						<?php endif; ?>
 
 						<?php if ( 'image' === $swatch_meta['render_type'] && ! empty( $swatch_meta['image_url'] ) ) : ?>
 							<span class="wvs-swatch-thumb">
@@ -276,6 +292,9 @@ class WVS_PDP_Renderer {
 							</span>
 						<?php elseif ( 'color' === $swatch_meta['render_type'] ) : ?>
 							<span class="wvs-swatch-circle" style="<?php echo esc_attr( $swatch_meta['css_background'] ); ?>"></span>
+						<?php elseif ( 'radio' === $swatch_meta['render_type'] ) : ?>
+							<span class="wvs-radio-indicator"></span>
+							<span class="wvs-radio-label"><?php echo esc_html( $term_label ); ?></span>
 						<?php else : ?>
 							<span class="wvs-swatch-text"><?php echo esc_html( $term_label ); ?></span>
 						<?php endif; ?>
@@ -295,36 +314,54 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Determine display mode for a given attribute (Auto Variation Image, Colour Circle, or Text Box).
+	 * Determine display mode for an attribute based on Studio override, Products > Attributes Type, and Auto-Convert toggles.
 	 *
-	 * @param string $attribute Attribute taxonomy or name.
+	 * @param string                $attribute        Attribute taxonomy or name.
+	 * @param array<string, string> $variation_thumbs Variation featured images indexed by term slug.
 	 * @return string
 	 */
-	private function resolve_attribute_display_mode( $attribute ) {
+	private function resolve_attribute_display_mode( $attribute, $variation_thumbs = array() ) {
 		$settings   = class_exists( 'WVS_Inheritance_Engine' ) ? WVS_Inheritance_Engine::get_global_settings() : get_option( 'wvs_global_settings', array() );
 		$clean_name = str_replace( 'pa_', '', strtolower( trim( $attribute ) ) );
 
-		// 1. Check direct setting saved from Admin Menu (`attr_display_{name}`).
-		if ( ! empty( $settings[ 'attr_display_' . $clean_name ] ) ) {
-			return sanitize_key( (string) $settings[ 'attr_display_' . $clean_name ] );
+		// 1. Check explicit Studio table override (`attr_display_{name}`).
+		$override = isset( $settings[ 'attr_display_' . $clean_name ] ) ? sanitize_key( (string) $settings[ 'attr_display_' . $clean_name ] ) : 'inherit_wc';
+		if ( ! empty( $override ) && 'inherit_wc' !== $override ) {
+			return $override;
 		}
 
-		// 2. Check structured `attribute_display_map` array if present.
-		if ( isset( $settings['attribute_display_map'] ) && is_array( $settings['attribute_display_map'] ) ) {
-			if ( ! empty( $settings['attribute_display_map'][ $attribute ] ) ) {
-				return sanitize_key( (string) $settings['attribute_display_map'][ $attribute ] );
+		// 2. Check WooCommerce Attribute Type configured under Products > Attributes.
+		$taxonomy = taxonomy_exists( $attribute ) ? $attribute : 'pa_' . $clean_name;
+		if ( class_exists( 'WVS_Attribute_Fields' ) && taxonomy_exists( $taxonomy ) ) {
+			$wc_type = WVS_Attribute_Fields::get_taxonomy_attribute_type( $taxonomy );
+			if ( 'color' === $wc_type ) {
+				return 'color_circle';
 			}
-			if ( ! empty( $settings['attribute_display_map'][ $clean_name ] ) ) {
-				return sanitize_key( (string) $settings['attribute_display_map'][ $clean_name ] );
+			if ( 'image' === $wc_type ) {
+				return 'auto_image';
+			}
+			if ( 'button' === $wc_type ) {
+				return 'text_box';
+			}
+			if ( 'radio' === $wc_type ) {
+				return 'radio';
 			}
 		}
 
-		// 3. Smart auto-detection fallback for Color vs Size/Groupset/Wheelset.
-		if ( false !== strpos( $clean_name, 'color' ) || false !== strpos( $clean_name, 'colour' ) ) {
+		// 3. Auto-Convert Dropdown to Variation Image if enabled and variations have featured images.
+		$auto_to_image = ! isset( $settings['auto_dropdown_to_image'] ) || 'yes' === $settings['auto_dropdown_to_image'];
+		$is_color_attr = ( false !== strpos( $clean_name, 'color' ) || false !== strpos( $clean_name, 'colour' ) );
+		if ( $auto_to_image && $is_color_attr && ! empty( $variation_thumbs ) ) {
 			return 'auto_image';
 		}
 
-		return 'text_box';
+		// 4. Auto-Convert Default Dropdowns to Button Swatches if enabled.
+		$auto_to_button = ! isset( $settings['auto_dropdown_to_button'] ) || 'yes' === $settings['auto_dropdown_to_button'];
+		if ( $auto_to_button ) {
+			return 'text_box';
+		}
+
+		return 'dropdown';
 	}
 
 	/**
@@ -377,12 +414,13 @@ class WVS_PDP_Renderer {
 	 * @param string $option_slug Term slug or raw option text.
 	 * @return string
 	 */
-	private function get_Readable_term_label( $attribute, $option_slug ) {
+	private function get_readable_term_label( $attribute, $option_slug ) {
 		if ( '' === $option_slug ) {
 			return '';
 		}
-		if ( taxonomy_exists( $attribute ) ) {
-			$term = get_term_by( 'slug', $option_slug, $attribute );
+		$taxonomy = taxonomy_exists( $attribute ) ? $attribute : 'pa_' . str_replace( 'pa_', '', strtolower( trim( $attribute ) ) );
+		if ( taxonomy_exists( $taxonomy ) ) {
+			$term = get_term_by( 'slug', $option_slug, $taxonomy );
 			if ( $term && ! is_wp_error( $term ) ) {
 				return $term->name;
 			}
@@ -391,37 +429,42 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Resolve visual metadata (Image URL, Primary/Secondary Hex, Split Gradient, or Text) for a single swatch button.
+	 * Resolve visual metadata (Image URL, Primary/Secondary Hex, Split Angle, Radio, or Button Text) for a single swatch.
 	 *
 	 * @param string                $attribute        Attribute name.
 	 * @param string                $option_slug      Term slug.
+	 * @param string                $display_mode     Resolved attribute display mode.
 	 * @param array<string, string> $variation_thumbs Map of variation thumbnail URLs.
 	 * @return array<string, string>
 	 */
-	private function get_term_swatch_metadata( $attribute, $option_slug, $variation_thumbs ) {
-		$mode = $this->resolve_attribute_display_mode( $attribute );
-
+	private function get_term_swatch_metadata( $attribute, $option_slug, $display_mode, $variation_thumbs ) {
 		$result = array(
-			'render_type'    => 'text',
+			'render_type'    => ( 'radio' === $display_mode ) ? 'radio' : 'text',
 			'image_url'      => '',
-			'css_background' => 'background-color:#cccccc;',
+			'css_background' => 'background-color:#cbd5e1;',
+			'tooltip'        => '',
 		);
 
-		if ( 'text_box' === $mode ) {
-			return $result;
-		}
-
+		$term_override = '';
 		$term_img_url  = '';
 		$primary_hex   = '';
 		$secondary_hex = '';
 		$is_dual       = false;
+		$split_angle   = '135deg';
 
-		if ( taxonomy_exists( $attribute ) ) {
-			$term = get_term_by( 'slug', $option_slug, $attribute );
+		$taxonomy = taxonomy_exists( $attribute ) ? $attribute : 'pa_' . str_replace( 'pa_', '', strtolower( trim( $attribute ) ) );
+		if ( taxonomy_exists( $taxonomy ) ) {
+			$term = get_term_by( 'slug', $option_slug, $taxonomy );
 			if ( $term && ! is_wp_error( $term ) ) {
-				$custom_img_id = (int) get_term_meta( $term->term_id, '_wvs_swatch_image_id', true );
+				$term_override     = (string) get_term_meta( $term->term_id, 'wvs_swatch_type', true );
+				$result['tooltip'] = (string) get_term_meta( $term->term_id, 'wvs_term_tooltip', true );
+
+				$custom_img_id = (int) get_term_meta( $term->term_id, 'wvs_swatch_image_id', true );
 				if ( ! $custom_img_id ) {
-					$custom_img_id = (int) get_term_meta( $term->term_id, 'wvs_swatch_image', true );
+					$custom_img_id = (int) get_term_meta( $term->term_id, '_wvs_swatch_image_id', true );
+				}
+				if ( ! $custom_img_id ) {
+					$custom_img_id = (int) get_term_meta( $term->term_id, 'product_attribute_image', true );
 				}
 				if ( $custom_img_id > 0 ) {
 					$url = wp_get_attachment_image_url( $custom_img_id, 'thumbnail' );
@@ -430,17 +473,44 @@ class WVS_PDP_Renderer {
 					}
 				}
 
-				$primary_hex = (string) get_term_meta( $term->term_id, '_wvs_primary_hex', true );
+				$primary_hex = (string) get_term_meta( $term->term_id, 'wvs_color_hex', true );
 				if ( '' === $primary_hex ) {
-					$primary_hex = (string) get_term_meta( $term->term_id, 'wvs_color', true );
+					$primary_hex = (string) get_term_meta( $term->term_id, '_wvs_primary_hex', true );
 				}
-				$secondary_hex = (string) get_term_meta( $term->term_id, '_wvs_secondary_hex', true );
-				$is_dual       = ( '' !== $secondary_hex );
+				if ( '' === $primary_hex ) {
+					$primary_hex = (string) get_term_meta( $term->term_id, 'product_attribute_color', true );
+				}
+
+				$is_dual_meta  = (string) get_term_meta( $term->term_id, 'wvs_is_dual_color', true );
+				$secondary_hex = (string) get_term_meta( $term->term_id, 'wvs_secondary_color_hex', true );
+				if ( '' === $secondary_hex ) {
+					$secondary_hex = (string) get_term_meta( $term->term_id, '_wvs_secondary_hex', true );
+				}
+				$is_dual     = ( 'yes' === $is_dual_meta && '' !== $secondary_hex ) || ( '' === $is_dual_meta && '' !== $secondary_hex );
+				$angle_meta  = (string) get_term_meta( $term->term_id, 'wvs_split_angle', true );
+				$split_angle = '' !== $angle_meta ? $angle_meta : '135deg';
 			}
 		}
 
-		// Mode 1: Auto Variation Thumbnail Image (with fallback to term image or color circle).
-		if ( 'auto_image' === $mode ) {
+		$effective_mode = '' !== $term_override ? $term_override : $display_mode;
+
+		if ( 'button' === $effective_mode || 'text_box' === $effective_mode ) {
+			$result['render_type'] = 'text';
+			return $result;
+		}
+
+		if ( 'radio' === $effective_mode ) {
+			$result['render_type'] = 'radio';
+			return $result;
+		}
+
+		// Image Swatch or Auto Variation Thumbnail Image.
+		if ( 'image' === $effective_mode || 'auto_image' === $effective_mode ) {
+			if ( 'image' === $term_override && '' !== $term_img_url ) {
+				$result['render_type'] = 'image';
+				$result['image_url']   = $term_img_url;
+				return $result;
+			}
 			if ( ! empty( $variation_thumbs[ $option_slug ] ) ) {
 				$result['render_type'] = 'image';
 				$result['image_url']   = $variation_thumbs[ $option_slug ];
@@ -453,18 +523,14 @@ class WVS_PDP_Renderer {
 			}
 		}
 
-		// Mode 2: Colour / Dual-Color Circle.
-		if ( 'color_circle' === $mode || 'auto_image' === $mode ) {
-			if ( '' !== $term_img_url && 'color_circle' !== $mode ) {
-				$result['render_type'] = 'image';
-				$result['image_url']   = $term_img_url;
-				return $result;
-			}
+		// Color / Dual-Color Swatch (or fallback when image swatch has a color hex).
+		if ( 'color' === $effective_mode || 'color_circle' === $effective_mode || 'auto_image' === $effective_mode || 'image' === $effective_mode ) {
 			if ( '' !== $primary_hex ) {
 				$result['render_type'] = 'color';
 				if ( $is_dual ) {
 					$result['css_background'] = sprintf(
-						'background: linear-gradient(135deg, %1$s 50%%, %2$s 50%%);',
+						'background: linear-gradient(%1$s, %2$s 50%%, %3$s 50%%);',
+						esc_attr( $split_angle ),
 						esc_attr( $primary_hex ),
 						esc_attr( $secondary_hex )
 					);
@@ -494,25 +560,30 @@ class WVS_PDP_Renderer {
 			$image_ids[] = $main_id;
 		}
 
-		// Read Native WooCommerce 11.1+ / custom variation gallery IDs.
-		$raw_gallery = $variation->get_meta( '_wc_additional_variation_images', true );
-		if ( empty( $raw_gallery ) ) {
-			$raw_gallery = $variation->get_meta( '_wvs_variation_gallery_ids', true );
-		}
-		if ( empty( $raw_gallery ) ) {
-			$raw_gallery = $variation->get_meta( 'woo_variation_gallery_images', true );
-		}
+		// Check all supported variation gallery meta keys.
+		$meta_keys = array(
+			'_wc_additional_variation_images',
+			'_wc_variation_gallery_ids',
+			'_wvs_variation_gallery_ids',
+			'woo_variation_gallery_images',
+		);
 
-		if ( is_array( $raw_gallery ) ) {
-			foreach ( $raw_gallery as $gid ) {
-				$image_ids[] = (int) $gid;
-			}
-		} elseif ( is_string( $raw_gallery ) && '' !== trim( $raw_gallery ) ) {
-			$parts = array_map( 'intval', explode( ',', $raw_gallery ) );
-			foreach ( $parts as $gid ) {
-				if ( $gid > 0 ) {
-					$image_ids[] = $gid;
+		foreach ( $meta_keys as $mkey ) {
+			$raw_gallery = $variation->get_meta( $mkey, true );
+			if ( ! empty( $raw_gallery ) ) {
+				if ( is_array( $raw_gallery ) ) {
+					foreach ( $raw_gallery as $gid ) {
+						$image_ids[] = (int) $gid;
+					}
+				} elseif ( is_string( $raw_gallery ) && '' !== trim( $raw_gallery ) ) {
+					$parts = array_map( 'intval', explode( ',', $raw_gallery ) );
+					foreach ( $parts as $gid ) {
+						if ( $gid > 0 ) {
+							$image_ids[] = $gid;
+						}
+					}
 				}
+				break;
 			}
 		}
 
@@ -579,7 +650,7 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Render Ship to Home vs In-Store Pickup block and Complete Your Ride cross-sells when enabled.
+	 * Render Ship to Home vs In-Store Pickup block below Add to Cart form when enabled.
 	 */
 	public function render_fulfilment_and_cross_sells() {
 		global $product;

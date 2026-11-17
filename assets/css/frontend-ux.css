@@ -1,6 +1,6 @@
 /
 
-Frontend Swatches, Tooltips, Out-of-Stock Effects & Flatsome UX Styles
+Frontend Swatches, Tooltips, Out-of-Stock Effects & Responsive Styles
 
 File Path: assets/css/frontend-ux.css
 
@@ -41,7 +41,7 @@ letter-spacing: 0.04em;
 color: var(--wvs-primary-color);
 }
 
-/* Selected Variation Name Beside Attribute Label (e.g. "Colour: Gloss Black") */
+/* Selected Variation Name Beside Attribute Label */
 .wvs-selected-variation-name {
 font-weight: 500;
 text-transform: none;
@@ -50,29 +50,7 @@ color: #475569;
 margin-left: 4px;
 }
 
-/* Brand Eyebrow & Spec Subtitle */
-.wvs-pdp-brand-eyebrow {
-margin-bottom: 6px;
-}
-
-.wvs-pdp-brand-eyebrow .wvs-brand-link {
-display: inline-block;
-font-size: 12px;
-font-weight: 700;
-text-transform: uppercase;
-letter-spacing: 0.08em;
-color: #64748b;
-text-decoration: none;
-}
-
-.wvs-pdp-spec-subtitle {
-font-size: 14px;
-color: #475569;
-margin: -4px 0 14px;
-font-weight: 500;
-}
-
-/* Swatches Container & List */
+/* Swatches Container & Flex List */
 .wvs-swatches-container {
 margin-top: 4px;
 margin-bottom: 6px;
@@ -80,7 +58,7 @@ margin-bottom: 6px;
 
 .wvs-swatches-list {
 display: flex;
-flex-wrap: wrap;
+flex-wrap: wrap; /* Allows swatches to wrap cleanly on mobile screens */
 gap: 10px;
 align-items: center;
 }
@@ -91,7 +69,7 @@ align-items: stretch;
 gap: 8px;
 }
 
-/* Base Swatch Button Reset (Overrides Flatsome button styles cleanly) */
+/* Base Swatch Button Reset */
 button.wvs-swatch-item {
 position: relative;
 display: inline-flex;
@@ -116,7 +94,7 @@ border-color: var(--wvs-primary-color);
 transform: translateY(-1px);
 }
 
-/* Color & Image Swatch Dimensions */
+/* Dimensions for Color & Image */
 button.wvs-swatch-item.wvs-swatch-type-color,
 button.wvs-swatch-item.wvs-swatch-type-image {
 width: var(--wvs-swatch-width, 42px);
@@ -124,24 +102,17 @@ height: var(--wvs-swatch-height, 42px);
 padding: 3px;
 }
 
-/* Shape Variations: Rounded vs. Squared */
-button.wvs-swatch-item.wvs-swatch-type-color.wvs-shape-rounded {
-border-radius: 50%;
-}
-
+/* Shape Variations */
+button.wvs-swatch-item.wvs-swatch-type-color.wvs-shape-rounded { border-radius: 50%; }
 button.wvs-swatch-item.wvs-swatch-type-image.wvs-shape-rounded,
 button.wvs-swatch-item.wvs-swatch-type-text.wvs-shape-rounded,
-button.wvs-swatch-item.wvs-swatch-type-radio.wvs-shape-rounded {
-border-radius: 6px;
-}
+button.wvs-swatch-item.wvs-swatch-type-radio.wvs-shape-rounded { border-radius: 6px; }
 
 button.wvs-swatch-item.wvs-shape-squared,
 button.wvs-swatch-item.wvs-shape-squared .wvs-swatch-circle,
-button.wvs-swatch-item.wvs-shape-squared .wvs-swatch-thumb {
-border-radius: 2px !important;
-}
+button.wvs-swatch-item.wvs-shape-squared .wvs-swatch-thumb { border-radius: 2px !important; }
 
-/* Inner Color Circle & Image Thumbnail */
+/* Inner Spans */
 .wvs-swatch-circle {
 display: block;
 width: 100%;
@@ -160,7 +131,6 @@ border-radius: 4px;
 overflow: hidden;
 background: #f8fafc;
 }
-
 .wvs-swatch-thumb img {
 width: 100%;
 height: 100%;
@@ -168,10 +138,10 @@ object-fit: cover;
 display: block;
 }
 
-/* Button / Label Swatches (Sizes, Groupsets, Wheelsets) */
+/* Button / Label Box */
 button.wvs-swatch-item.wvs-swatch-type-text {
 min-width: var(--wvs-swatch-width, 44px);
-min-height: var(--wvs-swatch-height, 38px);
+min-height: var(--wvs-swatch-height, 40px);
 padding: 8px 16px;
 font-size: 13px;
 font-weight: 600;
@@ -179,7 +149,7 @@ background: #ffffff !important;
 color: var(--wvs-primary-color) !important;
 }
 
-/* Radio Swatches */
+/* Radio List */
 button.wvs-swatch-item.wvs-swatch-type-radio {
 width: 100%;
 justify-content: flex-start;
@@ -189,44 +159,30 @@ font-size: 13px;
 font-weight: 600;
 background: #ffffff !important;
 }
-
 .wvs-radio-indicator {
 width: 16px;
 height: 16px;
 border-radius: 50%;
 border: 2px solid #94a3b8;
-display: inline-block;
 position: relative;
 flex-shrink: 0;
 }
-
-button.wvs-swatch-item.wvs-swatch-type-radio.selected .wvs-radio-indicator {
-border-color: var(--wvs-primary-color);
-}
-
+button.wvs-swatch-item.wvs-swatch-type-radio.selected .wvs-radio-indicator { border-color: var(--wvs-primary-color); }
 button.wvs-swatch-item.wvs-swatch-type-radio.selected .wvs-radio-indicator::after {
-content: "";
-position: absolute;
-top: 3px;
-left: 3px;
-width: 6px;
-height: 6px;
-border-radius: 50%;
-background: var(--wvs-primary-color);
+content: ""; position: absolute; top: 3px; left: 3px; width: 6px; height: 6px; border-radius: 50%; background: var(--wvs-primary-color);
 }
 
-/* Active / Selected Swatch States */
+/* Active States */
 button.wvs-swatch-item.selected {
 border-color: var(--wvs-primary-color) !important;
 box-shadow: 0 0 0 1.5px var(--wvs-primary-color);
 }
-
 button.wvs-swatch-item.wvs-swatch-type-text.selected {
 background: var(--wvs-primary-color) !important;
 color: #ffffff !important;
 }
 
-/* Selected Checkmark Badge on Color & Image Swatches */
+/* Checkmark Badge on Visuals */
 .wvs-swatch-check {
 display: none;
 position: absolute;
@@ -243,13 +199,10 @@ text-align: center;
 z-index: 4;
 box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
 }
-
 button.wvs-swatch-item.wvs-swatch-type-color.selected .wvs-swatch-check,
-button.wvs-swatch-item.wvs-swatch-type-image.selected .wvs-swatch-check {
-display: block;
-}
+button.wvs-swatch-item.wvs-swatch-type-image.selected .wvs-swatch-check { display: block; }
 
-/* Floating Hover Tooltip */
+/* Floating Tooltip */
 .wvs-swatch-tooltip {
 position: absolute;
 bottom: calc(100% + 8px);
@@ -258,7 +211,7 @@ transform: translateX(-50%) translateY(4px);
 background: var(--wvs-primary-color);
 color: #ffffff;
 padding: 5px 10px;
-font-size: 11px;
+font-size: 12px;
 font-weight: 600;
 border-radius: 4px;
 white-space: nowrap;
@@ -269,84 +222,27 @@ transition: all 0.16s ease;
 z-index: 25;
 box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
 }
-
 .wvs-swatch-tooltip::after {
-content: "";
-position: absolute;
-top: 100%;
-left: 50%;
-transform: translateX(-50%);
-border-width: 5px;
-border-style: solid;
-border-color: var(--wvs-primary-color) transparent transparent transparent;
+content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+border-width: 5px; border-style: solid; border-color: var(--wvs-primary-color) transparent transparent transparent;
 }
-
 button.wvs-swatch-item:hover .wvs-swatch-tooltip {
-opacity: 1;
-visibility: visible;
-transform: translateX(-50%) translateY(0);
+opacity: 1; visibility: visible; transform: translateX(-50%) translateY(0);
 }
 
-/* Out-of-Stock / Unavailable Visual Behaviors: Cross Out, Blur, or Hide */
+/* Out-of-Stock (OOS) Cross/Blur/Hide States */
 .wvs-swatch-oos-slash {
-display: none;
-position: absolute;
-inset: 0;
-pointer-events: none;
-overflow: hidden;
-border-radius: inherit;
+display: none; position: absolute; inset: 0; pointer-events: none; overflow: hidden; border-radius: inherit;
 }
-
 .wvs-swatch-oos-slash::before {
-content: "";
-position: absolute;
-top: 50%;
-left: -15%;
-width: 130%;
-height: 2px;
-background: var(--wvs-danger-color);
-transform: rotate(-35deg);
-box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+content: ""; position: absolute; top: 50%; left: -15%; width: 130%; height: 2px;
+background: var(--wvs-danger-color); transform: rotate(-35deg); box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
 }
-
-/* Effect 1: Cross Out (Default) */
-body.wvs-oos-effect-cross button.wvs-swatch-item.is-oos-in-combo,
-body:not(.wvs-oos-effect-blur):not(.wvs-oos-effect-hide) button.wvs-swatch-item.is-oos-in-combo {
-opacity: 0.42;
-}
-
-body.wvs-oos-effect-cross button.wvs-swatch-item.is-oos-in-combo .wvs-swatch-oos-slash,
-body:not(.wvs-oos-effect-blur):not(.wvs-oos-effect-hide) button.wvs-swatch-item.is-oos-in-combo .wvs-swatch-oos-slash {
-display: block;
-}
-
-/* Effect 2: Blur / Fade */
-body.wvs-oos-effect-blur button.wvs-swatch-item.is-oos-in-combo {
-opacity: 0.32;
-filter: grayscale(85%) blur(0.4px);
-}
-
-/* Effect 3: Hide Completely */
-body.wvs-oos-effect-hide button.wvs-swatch-item.is-oos-in-combo {
-display: none !important;
-}
-
-/* Strict Lock Mode Cursor */
-button.wvs-swatch-item.is-oos-locked {
-cursor: not-allowed !important;
-}
-
-/* Desktop Sticky Product Gallery for Flatsome */
-@media (min-width: 1025px) {
-body.wvs-sticky-desktop-gallery .product-main .row {
-align-items: flex-start !important;
-}
-body.wvs-sticky-desktop-gallery .product-gallery {
-position: sticky !important;
-top: 95px;
-align-self: flex-start;
-}
-}
+body.wvs-oos-effect-cross button.wvs-swatch-item.is-oos-in-combo { opacity: 0.42; }
+body.wvs-oos-effect-cross button.wvs-swatch-item.is-oos-in-combo .wvs-swatch-oos-slash { display: block; }
+body.wvs-oos-effect-blur button.wvs-swatch-item.is-oos-in-combo { opacity: 0.32; filter: grayscale(85%) blur(0.4px); }
+body.wvs-oos-effect-hide button.wvs-swatch-item.is-oos-in-combo { display: none !important; }
+button.wvs-swatch-item.is-oos-locked { cursor: not-allowed !important; }
 
 /* Delivery Switcher Block */
 .wvs-delivery-switcher-block {
@@ -354,61 +250,52 @@ display: grid;
 grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 gap: 10px;
 margin-top: 16px;
+margin-bottom: 24px;
 }
-
 .wvs-delivery-option {
-display: flex;
-align-items: center;
-gap: 10px;
-padding: 12px 14px;
-border: 1.5px solid var(--wvs-border-color);
-border-radius: 6px;
-cursor: pointer;
-background: #ffffff;
-transition: all 0.16s ease;
+display: flex; align-items: center; gap: 12px; padding: 14px;
+border: 1.5px solid var(--wvs-border-color); border-radius: 6px;
+cursor: pointer; background: #ffffff; transition: all 0.16s ease;
 }
-
-.wvs-delivery-option.is-selected {
-border-color: var(--wvs-primary-color);
-background: #f8fafc;
-}
-
-.wvs-delivery-radio {
-width: 16px;
-height: 16px;
-border-radius: 50%;
-border: 2px solid #94a3b8;
-position: relative;
-flex-shrink: 0;
-}
-
-.wvs-delivery-option.is-selected .wvs-delivery-radio {
-border-color: var(--wvs-primary-color);
-}
-
+.wvs-delivery-option.is-selected { border-color: var(--wvs-primary-color); background: #f8fafc; }
+.wvs-delivery-radio { width: 18px; height: 18px; border-radius: 50%; border: 2px solid #94a3b8; position: relative; flex-shrink: 0; }
+.wvs-delivery-option.is-selected .wvs-delivery-radio { border-color: var(--wvs-primary-color); }
 .wvs-delivery-option.is-selected .wvs-delivery-radio::after {
-content: "";
-position: absolute;
-top: 3px;
-left: 3px;
-width: 6px;
-height: 6px;
-border-radius: 50%;
-background: var(--wvs-primary-color);
+content: ""; position: absolute; top: 3px; left: 3px; width: 8px; height: 8px; border-radius: 50%; background: var(--wvs-primary-color);
+}
+.wvs-delivery-info { display: flex; flex-direction: column; line-height: 1.3; }
+.wvs-delivery-info strong { font-size: 14px; color: var(--wvs-primary-color); margin-bottom:2px; }
+.wvs-delivery-info span { font-size: 12px; color: #64748b; }
+
+/* ==========================================================================
+Responsive UI/UX Adjustments
+========================================================================== */
+@media (min-width: 1025px) {
+body.wvs-sticky-desktop-gallery .product-main .row { align-items: flex-start !important; }
+body.wvs-sticky-desktop-gallery .product-gallery { position: sticky !important; top: 95px; align-self: flex-start; }
 }
 
-.wvs-delivery-info {
-display: flex;
-flex-direction: column;
-line-height: 1.3;
+@media (max-width: 1024px) {
+.wvs-swatches-list { gap: 8px; }
+/* Ensure Delivery block stacks cleanly on tight tablet screens */
+.wvs-delivery-switcher-block { flex-direction: column; gap: 8px; }
 }
 
-.wvs-delivery-info strong {
-font-size: 13px;
-color: var(--wvs-primary-color);
+@media (max-width: 767px) {
+/* Hide hover tooltips on touch devices */
+.wvs-swatch-tooltip { display: none !important; }
+
+/* Increase touch target size for buttons */
+button.wvs-swatch-item.wvs-swatch-type-text {
+	min-height: 44px;
+	padding: 10px 16px;
+	font-size: 14px;
 }
 
-.wvs-delivery-info span {
-font-size: 12px;
-color: #64748b;
+/* Force delivery options to stack */
+.wvs-delivery-switcher-block {
+	grid-template-columns: 1fr;
+}
+
+
 }

@@ -232,14 +232,14 @@ class WVS_PDP_Renderer {
 
 		$settings            = class_exists( 'WVS_Inheritance_Engine' ) ? WVS_Inheritance_Engine::get_global_settings() : get_option( 'wvs_global_settings', array() );
 		$variation_thumbs    = $this->get_variation_thumbnails_for_attribute( $product, $attribute );
-		$display_mode        = $this->resolve_attribute_display_mode( $attribute, $variation_thumbs );
+		$display_mode        = $this->resolve_attribute_display_mode( $attribute, $variation_thumbs, $product->get_id() );
 
 		// If explicitly configured to remain a standard WooCommerce dropdown, return unmodified.
 		if ( 'dropdown' === $display_mode ) {
 			return $html_select;
 		}
 
-		$is_visual       = in_array( $display_mode, array( 'auto_image', 'image', 'color_circle', 'color' ), true );
+		$is_visual       = in_array( $display_mode, array( 'auto_image', 'custom_image', 'image', 'color_circle', 'color' ), true );
 		$shape           = isset( $settings['swatch_shape'] ) ? (string) $settings['swatch_shape'] : 'rounded';
 		$enable_tooltip  = ! isset( $settings['enable_tooltip'] ) || 'yes' === $settings['enable_tooltip'];
 		$selected_label  = $this->get_readable_term_label( $attribute, $selected );
@@ -262,7 +262,7 @@ class WVS_PDP_Renderer {
 					$option_slug = (string) $option_slug;
 					$is_selected = ( sanitize_title( $selected ) === sanitize_title( $option_slug ) || $selected === $option_slug );
 					$term_label  = $this->get_readable_term_label( $attribute, $option_slug );
-					$swatch_meta = $this->get_term_swatch_metadata( $attribute, $option_slug, $display_mode, $variation_thumbs );
+					$swatch_meta = $this->get_term_swatch_metadata( $attribute, $option_slug, $display_mode, $variation_thumbs, $product->get_id() );
 					$tooltip_txt = ! empty( $swatch_meta['tooltip'] ) ? $swatch_meta['tooltip'] : $term_label;
 
 					$item_classes = array(
@@ -314,15 +314,29 @@ class WVS_PDP_Renderer {
 	}
 
 	/**
-	 * Determine display mode for an attribute based on Studio override, Products > Attributes Type, and Auto-Convert toggles.
+	 * Determine display mode for an attribute based on Per-Product setting, Studio override, Products > Attributes Type, and Auto-Convert toggles.
 	 *
 	 * @param string                $attribute        Attribute taxonomy or name.
 	 * @param array<string, string> $variation_thumbs Variation featured images indexed by term slug.
+	 * @param int                   $product_id       Product ID for per-product attribute overrides.
 	 * @return string
 	 */
-	private function resolve_attribute_display_mode( $attribute, $variation_thumbs = array() ) {
-		$settings   = class_exists( 'WVS_Inheritance_Engine' ) ? WVS_Inheritance_Engine::get_global_settings() : get_option( 'wvs_global_settings', array() );
+	private function resolve_attribute_display_mode( $attribute, $variation_thumbs = array(), $product_id = 0 ) {
+		$attr_key   = sanitize_title( $attribute );
 		$clean_name = str_replace( 'pa_', '', strtolower( trim( $attribute ) ) );
+
+		// 0. Check Per-Product Attribute Setting saved inside Product Data > Attributes.
+		if ( $product_id > 0 ) {
+			$prod_attr_settings = get_post_meta( $product_id, '_wvs_product_attr_settings', true );
+			if ( is_array( $prod_attr_settings ) && ! empty( $prod_attr_settings[ $attr_key ]['type'] ) ) {
+				$prod_type = sanitize_key( (string) $prod_attr_settings[ $attr_key ]['type'] );
+				if ( 'auto' !== $prod_type ) {
+					return $prod_type;
+				}
+			}
+		}
+
+		$settings = class_exists( 'WVS_Inheritance_Engine' ) ? WVS_Inheritance_Engine::get_global_settings() : get_option( 'wvs_global_settings', array() );
 
 		// 1. Check explicit Studio table override (`attr_display_{name}`).
 		$override = isset( $settings[ 'attr_display_' . $clean_name ] ) ? sanitize_key( (string) $settings[ 'attr_display_' . $clean_name ] ) : 'inherit_wc';
@@ -388,7 +402,7 @@ class WVS_PDP_Renderer {
 
 			$var_attrs = $variation->get_variation_attributes();
 			$term_val  = isset( $var_attrs[ $attr_key ] ) ? (string) $var_attrs[ $attr_key ] : '';
-			if ( '' === $term_val || isset( $map[ $term_val ] ) ) {
+			if ( '' === $term_val ) {
 				continue;
 			}
 
@@ -399,7 +413,14 @@ class WVS_PDP_Renderer {
 					$img_url = wp_get_attachment_image_url( $image_id, 'thumbnail' );
 				}
 				if ( $img_url ) {
-					$map[ $term_val ] = (string) $img_url;
+					// Store under both raw value and sanitized slug so custom product-level attributes ("Black Only") match seamlessly.
+					if ( ! isset( $map[ $term_val ] ) ) {
+						$map[ $term_val ] = (string) $img_url;
+					}
+					$slug_key = sanitize_title( $term_val );
+					if ( ! isset( $map[ $slug_key ] ) ) {
+						$map[ $slug_key ] = (string) $img_url;
+					}
 				}
 			}
 		}
@@ -432,12 +453,13 @@ class WVS_PDP_Renderer {
 	 * Resolve visual metadata (Image URL, Primary/Secondary Hex, Split Angle, Radio, or Button Text) for a single swatch.
 	 *
 	 * @param string                $attribute        Attribute name.
-	 * @param string                $option_slug      Term slug.
+	 * @param string                $option_slug      Term slug or custom option value.
 	 * @param string                $display_mode     Resolved attribute display mode.
 	 * @param array<string, string> $variation_thumbs Map of variation thumbnail URLs.
+	 * @param int                   $product_id       Product ID for per-product custom term metadata.
 	 * @return array<string, string>
 	 */
-	private function get_term_swatch_metadata( $attribute, $option_slug, $display_mode, $variation_thumbs ) {
+	private function get_term_swatch_metadata( $attribute, $option_slug, $display_mode, $variation_thumbs, $product_id = 0 ) {
 		$result = array(
 			'render_type'    => ( 'radio' === $display_mode ) ? 'radio' : 'text',
 			'image_url'      => '',
@@ -451,7 +473,31 @@ class WVS_PDP_Renderer {
 		$secondary_hex = '';
 		$is_dual       = false;
 		$split_angle   = '135deg';
+		$opt_key       = sanitize_title( $option_slug );
+		$attr_key      = sanitize_title( $attribute );
 
+		// 1. Check Per-Product Custom Term Settings saved in Product Data > Attributes.
+		if ( $product_id > 0 ) {
+			$prod_attr_settings = get_post_meta( $product_id, '_wvs_product_attr_settings', true );
+			if ( is_array( $prod_attr_settings ) && ! empty( $prod_attr_settings[ $attr_key ]['terms'][ $opt_key ] ) ) {
+				$custom_term = $prod_attr_settings[ $attr_key ]['terms'][ $opt_key ];
+				if ( ! empty( $custom_term['primary_hex'] ) ) {
+					$primary_hex = (string) $custom_term['primary_hex'];
+				}
+				if ( ! empty( $custom_term['secondary_hex'] ) ) {
+					$secondary_hex = (string) $custom_term['secondary_hex'];
+					$is_dual       = true;
+				}
+				if ( ! empty( $custom_term['image_id'] ) ) {
+					$url = wp_get_attachment_image_url( absint( $custom_term['image_id'] ), 'thumbnail' );
+					if ( $url ) {
+						$term_img_url = (string) $url;
+					}
+				}
+			}
+		}
+
+		// 2. Check Global Taxonomy Term Meta if not overridden at product level.
 		$taxonomy = taxonomy_exists( $attribute ) ? $attribute : 'pa_' . str_replace( 'pa_', '', strtolower( trim( $attribute ) ) );
 		if ( taxonomy_exists( $taxonomy ) ) {
 			$term = get_term_by( 'slug', $option_slug, $taxonomy );
@@ -459,34 +505,41 @@ class WVS_PDP_Renderer {
 				$term_override     = (string) get_term_meta( $term->term_id, 'wvs_swatch_type', true );
 				$result['tooltip'] = (string) get_term_meta( $term->term_id, 'wvs_term_tooltip', true );
 
-				$custom_img_id = (int) get_term_meta( $term->term_id, 'wvs_swatch_image_id', true );
-				if ( ! $custom_img_id ) {
-					$custom_img_id = (int) get_term_meta( $term->term_id, '_wvs_swatch_image_id', true );
-				}
-				if ( ! $custom_img_id ) {
-					$custom_img_id = (int) get_term_meta( $term->term_id, 'product_attribute_image', true );
-				}
-				if ( $custom_img_id > 0 ) {
-					$url = wp_get_attachment_image_url( $custom_img_id, 'thumbnail' );
-					if ( $url ) {
-						$term_img_url = (string) $url;
+				if ( '' === $term_img_url ) {
+					$custom_img_id = (int) get_term_meta( $term->term_id, 'wvs_swatch_image_id', true );
+					if ( ! $custom_img_id ) {
+						$custom_img_id = (int) get_term_meta( $term->term_id, '_wvs_swatch_image_id', true );
+					}
+					if ( ! $custom_img_id ) {
+						$custom_img_id = (int) get_term_meta( $term->term_id, 'product_attribute_image', true );
+					}
+					if ( $custom_img_id > 0 ) {
+						$url = wp_get_attachment_image_url( $custom_img_id, 'thumbnail' );
+						if ( $url ) {
+							$term_img_url = (string) $url;
+						}
 					}
 				}
 
-				$primary_hex = (string) get_term_meta( $term->term_id, 'wvs_color_hex', true );
 				if ( '' === $primary_hex ) {
-					$primary_hex = (string) get_term_meta( $term->term_id, '_wvs_primary_hex', true );
-				}
-				if ( '' === $primary_hex ) {
-					$primary_hex = (string) get_term_meta( $term->term_id, 'product_attribute_color', true );
+					$primary_hex = (string) get_term_meta( $term->term_id, 'wvs_color_hex', true );
+					if ( '' === $primary_hex ) {
+						$primary_hex = (string) get_term_meta( $term->term_id, '_wvs_primary_hex', true );
+					}
+					if ( '' === $primary_hex ) {
+						$primary_hex = (string) get_term_meta( $term->term_id, 'product_attribute_color', true );
+					}
 				}
 
-				$is_dual_meta  = (string) get_term_meta( $term->term_id, 'wvs_is_dual_color', true );
-				$secondary_hex = (string) get_term_meta( $term->term_id, 'wvs_secondary_color_hex', true );
 				if ( '' === $secondary_hex ) {
-					$secondary_hex = (string) get_term_meta( $term->term_id, '_wvs_secondary_hex', true );
+					$is_dual_meta  = (string) get_term_meta( $term->term_id, 'wvs_is_dual_color', true );
+					$secondary_hex = (string) get_term_meta( $term->term_id, 'wvs_secondary_color_hex', true );
+					if ( '' === $secondary_hex ) {
+						$secondary_hex = (string) get_term_meta( $term->term_id, '_wvs_secondary_hex', true );
+					}
+					$is_dual = ( 'yes' === $is_dual_meta && '' !== $secondary_hex ) || ( '' === $is_dual_meta && '' !== $secondary_hex );
 				}
-				$is_dual     = ( 'yes' === $is_dual_meta && '' !== $secondary_hex ) || ( '' === $is_dual_meta && '' !== $secondary_hex );
+
 				$angle_meta  = (string) get_term_meta( $term->term_id, 'wvs_split_angle', true );
 				$split_angle = '' !== $angle_meta ? $angle_meta : '135deg';
 			}
@@ -504,16 +557,24 @@ class WVS_PDP_Renderer {
 			return $result;
 		}
 
-		// Image Swatch or Auto Variation Thumbnail Image.
-		if ( 'image' === $effective_mode || 'auto_image' === $effective_mode ) {
+		// Custom Swatch Image per Option.
+		if ( 'custom_image' === $effective_mode && '' !== $term_img_url ) {
+			$result['render_type'] = 'image';
+			$result['image_url']   = $term_img_url;
+			return $result;
+		}
+
+		// Image Swatch or Auto Variation Thumbnail Image (checks both raw option value and slug).
+		$var_thumb = isset( $variation_thumbs[ $option_slug ] ) ? $variation_thumbs[ $option_slug ] : ( isset( $variation_thumbs[ $opt_key ] ) ? $variation_thumbs[ $opt_key ] : '' );
+		if ( 'image' === $effective_mode || 'auto_image' === $effective_mode || 'custom_image' === $effective_mode ) {
 			if ( 'image' === $term_override && '' !== $term_img_url ) {
 				$result['render_type'] = 'image';
 				$result['image_url']   = $term_img_url;
 				return $result;
 			}
-			if ( ! empty( $variation_thumbs[ $option_slug ] ) ) {
+			if ( '' !== $var_thumb ) {
 				$result['render_type'] = 'image';
-				$result['image_url']   = $variation_thumbs[ $option_slug ];
+				$result['image_url']   = $var_thumb;
 				return $result;
 			}
 			if ( '' !== $term_img_url ) {
@@ -523,7 +584,7 @@ class WVS_PDP_Renderer {
 			}
 		}
 
-		// Color / Dual-Color Swatch (or fallback when image swatch has a color hex).
+		// Color / Dual-Color Swatch.
 		if ( 'color' === $effective_mode || 'color_circle' === $effective_mode || 'auto_image' === $effective_mode || 'image' === $effective_mode ) {
 			if ( '' !== $primary_hex ) {
 				$result['render_type'] = 'color';

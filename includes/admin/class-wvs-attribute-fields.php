@@ -42,6 +42,11 @@ class WVS_Attribute_Fields {
 		// 2. Render term selection multiselect inside Product Data > Attributes for custom swatch types.
 		add_action( 'woocommerce_product_option_terms', array( $this, 'render_product_attribute_terms_selector' ), 10, 3 );
 
+		// 2B. Render Per-Product Attribute Swatch Type & Custom Term Configurator inside Product Data > Attributes.
+		add_action( 'woocommerce_after_product_attribute_settings', array( $this, 'render_per_product_attribute_swatch_settings' ), 10, 2 );
+		add_action( 'wp_ajax_woocommerce_save_attributes', array( $this, 'ajax_save_per_product_attribute_swatch_settings' ), 5 );
+		add_action( 'woocommerce_process_product_meta', array( $this, 'save_per_product_attribute_swatch_settings_on_post_save' ), 20, 1 );
+
 		// 3. Register term fields and preview columns for all global product attributes.
 		add_action( 'admin_init', array( $this, 'register_taxonomy_hooks' ) );
 
@@ -55,18 +60,261 @@ class WVS_Attribute_Fields {
 	}
 
 	/**
-	 * Add Color, Image, Button, and Radio types to WooCommerce Attributes screen.
+	 * Enqueue color picker and media uploader on attribute term pages and product edit screens.
 	 *
-	 * @param array<string, string> $types Existing attribute types.
-	 * @return array<string, string>
+	 * @param string $hook Current admin page hook.
 	 */
-	public function register_attribute_types( $types ) {
-		$types['color']  = __( 'Color', 'woo-variation-studio' );
-		$types['image']  = __( 'Image', 'woo-variation-studio' );
-		$types['button'] = __( 'Button / Label', 'woo-variation-studio' );
-		$types['radio']  = __( 'Radio', 'woo-variation-studio' );
+	public function enqueue_admin_assets( $hook ) {
+		$screen = get_current_screen();
+		if ( ! $screen ) {
+			return;
+		}
 
-		return $types;
+		$is_term_screen    = ( 'edit-tags.php' === $hook || 'term.php' === $hook ) && 0 === strpos( (string) $screen->taxonomy, 'pa_' );
+		$is_product_screen = ( 'post.php' === $hook || 'post-new.php' === $hook ) && 'product' === $screen->post_type;
+
+		if ( ! $is_term_screen && ! $is_product_screen ) {
+			return;
+		}
+
+		wp_enqueue_media();
+		wp_enqueue_style( 'wp-color-picker' );
+		wp_enqueue_script( 'wp-color-picker' );
+	}
+
+	/**
+	 * Render "Swatch Display Type" and per-option Color/Image pickers directly inside Product Data > Attributes.
+	 *
+	 * @param WC_Product_Attribute|object $attribute Attribute object.
+	 * @param int                         $i         Attribute row index.
+	 */
+	public function render_per_product_attribute_swatch_settings( $attribute, $i ) {
+		global $post;
+
+		$product_id = 0;
+		if ( $post instanceof WP_Post ) {
+			$product_id = (int) $post->ID;
+		} elseif ( isset( $_POST['post_id'] ) ) {
+			$product_id = absint( $_POST['post_id'] );
+		}
+
+		$attr_name = '';
+		$options   = array();
+		$is_tax    = false;
+
+		if ( is_object( $attribute ) && method_exists( $attribute, 'get_name' ) ) {
+			$attr_name = (string) $attribute->get_name();
+			$options   = is_array( $attribute->get_options() ) ? $attribute->get_options() : array();
+			$is_tax    = (bool) $attribute->is_taxonomy();
+		}
+
+		$attr_key     = sanitize_title( $attr_name );
+		$saved_config = $product_id > 0 ? get_post_meta( $product_id, '_wvs_product_attr_settings', true ) : array();
+		if ( ! is_array( $saved_config ) ) {
+			$saved_config = array();
+		}
+
+		$attr_settings = isset( $saved_config[ $attr_key ] ) && is_array( $saved_config[ $attr_key ] ) ? $saved_config[ $attr_key ] : array();
+		$selected_type = isset( $attr_settings['type'] ) ? (string) $attr_settings['type'] : 'auto';
+		$terms_config  = isset( $attr_settings['terms'] ) && is_array( $attr_settings['terms'] ) ? $attr_settings['terms'] : array();
+		?>
+		<tr>
+			<td class="wvs-product-attr-settings-cell" colspan="2" style="background:#f8fafc; border-top:1px solid #e2e8f0; padding:12px 14px;">
+				<div style="display:flex; align-items:center; justify-content:space-between; flex-wrap:wrap; gap:12px;">
+					<div>
+						<label style="font-weight:600; color:#0f172a; display:block; margin-bottom:4px;">
+							<?php esc_html_e( 'Variation Studio — Swatch Display Type:', 'woo-variation-studio' ); ?>
+						</label>
+						<select name="wvs_attr_type[<?php echo esc_attr( (string) $i ); ?>]" class="wvs-product-attr-type-select" data-row-index="<?php echo esc_attr( (string) $i ); ?>" style="min-width:280px;">
+							<option value="auto" <?php selected( $selected_type, 'auto' ); ?>><?php esc_html_e( 'Auto-Detect (Smart Image for Colour / Button for Size)', 'woo-variation-studio' ); ?></option>
+							<option value="auto_image" <?php selected( $selected_type, 'auto_image' ); ?>><?php esc_html_e( 'Auto Variation Thumbnail Image (Uses Variation Photo)', 'woo-variation-studio' ); ?></option>
+							<option value="color_circle" <?php selected( $selected_type, 'color_circle' ); ?>><?php esc_html_e( 'Color / Dual-Color Swatch Circle', 'woo-variation-studio' ); ?></option>
+							<option value="custom_image" <?php selected( $selected_type, 'custom_image' ); ?>><?php esc_html_e( 'Custom Swatch Image per Option', 'woo-variation-studio' ); ?></option>
+							<option value="text_box" <?php selected( $selected_type, 'text_box' ); ?>><?php esc_html_e( 'Button / Label Box', 'woo-variation-studio' ); ?></option>
+							<option value="radio" <?php selected( $selected_type, 'radio' ); ?>><?php esc_html_e( 'Radio Button List', 'woo-variation-studio' ); ?></option>
+							<option value="dropdown" <?php selected( $selected_type, 'dropdown' ); ?>><?php esc_html_e( 'Default WooCommerce Dropdown', 'woo-variation-studio' ); ?></option>
+						</select>
+					</div>
+					<span class="description" style="font-size:12px; color:#475569;">
+						<?php esc_html_e( 'Tip: Click "Save attributes" after adding new values to configure individual colors below.', 'woo-variation-studio' ); ?>
+					</span>
+				</div>
+
+				<?php
+				if ( ! empty( $options ) ) :
+					$show_color_rows = ( 'color_circle' === $selected_type );
+					$show_image_rows = ( 'custom_image' === $selected_type );
+					?>
+					<div class="wvs-per-product-terms-box" id="wvs-terms-box-<?php echo esc_attr( (string) $i ); ?>" style="margin-top:12px; <?php echo ( $show_color_rows || $show_image_rows ) ? '' : 'display:none;'; ?>">
+						<table class="widefat striped" style="background:#fff; border:1px solid #cbd5e1;">
+							<thead>
+								<tr>
+									<th style="padding:8px 10px; font-size:12px;"><?php esc_html_e( 'Option Value', 'woo-variation-studio' ); ?></th>
+									<th class="wvs-col-color-hdr" style="padding:8px 10px; font-size:12px; <?php echo $show_color_rows ? '' : 'display:none;'; ?>"><?php esc_html_e( 'Primary Color Hex', 'woo-variation-studio' ); ?></th>
+									<th class="wvs-col-color-hdr" style="padding:8px 10px; font-size:12px; <?php echo $show_color_rows ? '' : 'display:none;'; ?>"><?php esc_html_e( 'Secondary Color (Optional Split)', 'woo-variation-studio' ); ?></th>
+									<th class="wvs-col-img-hdr" style="padding:8px 10px; font-size:12px; <?php echo $show_image_rows ? '' : 'display:none;'; ?>"><?php esc_html_e( 'Custom Swatch Image ID / Upload', 'woo-variation-studio' ); ?></th>
+								</tr>
+							</thead>
+							<tbody>
+								<?php
+								foreach ( $options as $opt ) :
+									$opt_label = '';
+									$opt_slug  = '';
+									if ( $is_tax ) {
+										$term_obj = get_term( (int) $opt, $attr_name );
+										if ( $term_obj && ! is_wp_error( $term_obj ) ) {
+											$opt_label = $term_obj->name;
+											$opt_slug  = $term_obj->slug;
+										}
+									} else {
+										$opt_label = trim( (string) $opt );
+										$opt_slug  = sanitize_title( $opt_label );
+									}
+
+									if ( '' === $opt_slug ) {
+										continue;
+									}
+
+									$t_data  = isset( $terms_config[ $opt_slug ] ) && is_array( $terms_config[ $opt_slug ] ) ? $terms_config[ $opt_slug ] : array();
+									$p_hex   = isset( $t_data['primary_hex'] ) ? (string) $t_data['primary_hex'] : '#0f172a';
+									$s_hex   = isset( $t_data['secondary_hex'] ) ? (string) $t_data['secondary_hex'] : '';
+									$img_id  = isset( $t_data['image_id'] ) ? absint( $t_data['image_id'] ) : 0;
+									$img_url = $img_id > 0 ? wp_get_attachment_image_url( $img_id, 'thumbnail' ) : '';
+									?>
+									<tr>
+										<td style="padding:8px 10px; vertical-align:middle;">
+											<strong><?php echo esc_html( $opt_label ); ?></strong>
+										</td>
+										<td class="wvs-col-color-cell" style="padding:8px 10px; vertical-align:middle; <?php echo $show_color_rows ? '' : 'display:none;'; ?>">
+											<input type="color" name="wvs_attr_term_primary_hex[<?php echo esc_attr( (string) $i ); ?>][<?php echo esc_attr( $opt_slug ); ?>]" value="<?php echo esc_attr( '' !== $p_hex ? $p_hex : '#0f172a' ); ?>" style="width:44px; height:30px; padding:0; border:1px solid #cbd5e1; vertical-align:middle; cursor:pointer;" />
+										</td>
+										<td class="wvs-col-color-cell" style="padding:8px 10px; vertical-align:middle; <?php echo $show_color_rows ? '' : 'display:none;'; ?>">
+											<input type="text" name="wvs_attr_term_secondary_hex[<?php echo esc_attr( (string) $i ); ?>][<?php echo esc_attr( $opt_slug ); ?>]" value="<?php echo esc_attr( $s_hex ); ?>" placeholder="#ffffff (Optional)" style="width:140px; font-size:12px;" />
+										</td>
+										<td class="wvs-col-img-cell" style="padding:8px 10px; vertical-align:middle; <?php echo $show_image_rows ? '' : 'display:none;'; ?>">
+											<div style="display:flex; align-items:center; gap:8px;">
+												<input type="hidden" class="wvs-inline-img-id" name="wvs_attr_term_image_id[<?php echo esc_attr( (string) $i ); ?>][<?php echo esc_attr( $opt_slug ); ?>]" value="<?php echo esc_attr( (string) $img_id ); ?>" />
+												<span class="wvs-inline-img-preview" style="width:32px; height:32px; border:1px solid #cbd5e1; border-radius:4px; display:inline-flex; align-items:center; justify-content:center; overflow:hidden; background:#f8fafc;">
+													<?php if ( $img_url ) : ?>
+														<img src="<?php echo esc_url( $img_url ); ?>" style="width:100%; height:100%; object-fit:cover;" alt="" />
+													<?php else : ?>
+														<span style="font-size:9px; color:#94a3b8;">None</span>
+													<?php endif; ?>
+												</span>
+												<button type="button" class="button button-small wvs-inline-upload-btn"><?php esc_html_e( 'Select Image', 'woo-variation-studio' ); ?></button>
+											</div>
+										</td>
+									</tr>
+								<?php endforeach; ?>
+							</tbody>
+						</table>
+					</div>
+				<?php endif; ?>
+			</td>
+		</tr>
+		<?php
+	}
+
+	/**
+	 * Save Per-Product Attribute Swatch settings when clicking "Save attributes" via AJAX.
+	 */
+	public function ajax_save_per_product_attribute_swatch_settings() {
+		check_ajax_referer( 'save-attributes', 'security' );
+
+		if ( ! current_user_can( 'edit_products' ) || empty( $_POST['post_id'] ) || empty( $_POST['data'] ) ) {
+			return;
+		}
+
+		$post_id = absint( $_POST['post_id'] );
+		$raw     = wp_unslash( $_POST['data'] );
+		$parsed  = array();
+		parse_str( $raw, $parsed );
+
+		$this->persist_per_product_attribute_settings( $post_id, $parsed );
+	}
+
+	/**
+	 * Save Per-Product Attribute Swatch settings when clicking the main "Update / Publish" product button.
+	 *
+	 * @param int $post_id Product ID.
+	 */
+	public function save_per_product_attribute_swatch_settings_on_post_save( $post_id ) {
+		if ( ! isset( $_POST['wvs_attr_type'] ) ) {
+			return;
+		}
+		$this->persist_per_product_attribute_settings( (int) $post_id, wp_unslash( $_POST ) );
+	}
+
+	/**
+	 * Parse and save per-product attribute swatch settings to `_wvs_product_attr_settings` post meta.
+	 *
+	 * @param int                  $product_id Product ID.
+	 * @param array<string, mixed> $data       Parsed form array.
+	 */
+	private function persist_per_product_attribute_settings( $product_id, $data ) {
+		if ( $product_id <= 0 || empty( $data['attribute_names'] ) || ! is_array( $data['attribute_names'] ) ) {
+			return;
+		}
+
+		$saved = get_post_meta( $product_id, '_wvs_product_attr_settings', true );
+		if ( ! is_array( $saved ) ) {
+			$saved = array();
+		}
+
+		$attr_names = $data['attribute_names'];
+		$attr_types = isset( $data['wvs_attr_type'] ) && is_array( $data['wvs_attr_type'] ) ? $data['wvs_attr_type'] : array();
+		$p_hexes    = isset( $data['wvs_attr_term_primary_hex'] ) && is_array( $data['wvs_attr_term_primary_hex'] ) ? $data['wvs_attr_term_primary_hex'] : array();
+		$s_hexes    = isset( $data['wvs_attr_term_secondary_hex'] ) && is_array( $data['wvs_attr_term_secondary_hex'] ) ? $data['wvs_attr_term_secondary_hex'] : array();
+		$img_ids    = isset( $data['wvs_attr_term_image_id'] ) && is_array( $data['wvs_attr_term_image_id'] ) ? $data['wvs_attr_term_image_id'] : array();
+
+		foreach ( $attr_names as $idx => $raw_name ) {
+			$attr_key = sanitize_title( (string) $raw_name );
+			if ( '' === $attr_key ) {
+				continue;
+			}
+
+			$type  = isset( $attr_types[ $idx ] ) ? sanitize_key( (string) $attr_types[ $idx ] ) : 'auto';
+			$terms = isset( $saved[ $attr_key ]['terms'] ) && is_array( $saved[ $attr_key ]['terms'] ) ? $saved[ $attr_key ]['terms'] : array();
+
+			if ( isset( $p_hexes[ $idx ] ) && is_array( $p_hexes[ $idx ] ) ) {
+				foreach ( $p_hexes[ $idx ] as $t_slug => $hex_val ) {
+					$clean_slug = sanitize_title( (string) $t_slug );
+					$clean_hex  = sanitize_hex_color( (string) $hex_val );
+					if ( ! isset( $terms[ $clean_slug ] ) ) {
+						$terms[ $clean_slug ] = array();
+					}
+					$terms[ $clean_slug ]['primary_hex'] = $clean_hex ? $clean_hex : '#0f172a';
+				}
+			}
+
+			if ( isset( $s_hexes[ $idx ] ) && is_array( $s_hexes[ $idx ] ) ) {
+				foreach ( $s_hexes[ $idx ] as $t_slug => $hex_val ) {
+					$clean_slug = sanitize_title( (string) $t_slug );
+					$clean_hex  = sanitize_hex_color( trim( (string) $hex_val ) );
+					if ( ! isset( $terms[ $clean_slug ] ) ) {
+						$terms[ $clean_slug ] = array();
+					}
+					$terms[ $clean_slug ]['secondary_hex'] = $clean_hex ? $clean_hex : '';
+				}
+			}
+
+			if ( isset( $img_ids[ $idx ] ) && is_array( $img_ids[ $idx ] ) ) {
+				foreach ( $img_ids[ $idx ] as $t_slug => $id_val ) {
+					$clean_slug = sanitize_title( (string) $t_slug );
+					if ( ! isset( $terms[ $clean_slug ] ) ) {
+						$terms[ $clean_slug ] = array();
+					}
+					$terms[ $clean_slug ]['image_id'] = absint( $id_val );
+				}
+			}
+
+			$saved[ $attr_key ] = array(
+				'type'  => $type,
+				'terms' => $terms,
+			);
+		}
+
+		update_post_meta( $product_id, '_wvs_product_attr_settings', $saved );
 	}
 
 	/**
@@ -494,11 +742,18 @@ class WVS_Attribute_Fields {
 	}
 
 	/**
-	 * Render inline JavaScript for WP Color Picker, Auto Color Name Matching, and Media Uploader.
+	 * Render inline JavaScript for WP Color Picker, Auto Color Name Matching, Media Uploader, and Product Attribute Tab toggles.
 	 */
 	public function render_admin_inline_script() {
 		$screen = get_current_screen();
-		if ( ! $screen || 0 !== strpos( (string) $screen->taxonomy, 'pa_' ) ) {
+		if ( ! $screen ) {
+			return;
+		}
+
+		$is_term_screen    = 0 === strpos( (string) $screen->taxonomy, 'pa_' );
+		$is_product_screen = 'product' === $screen->post_type;
+
+		if ( ! $is_term_screen && ! $is_product_screen ) {
 			return;
 		}
 		?>
@@ -508,7 +763,46 @@ class WVS_Attribute_Fields {
 				$('.wvs-color-picker').wpColorPicker();
 			}
 
-			// Toggle Dual Color row
+			// Toggle Per-Product Attribute Swatch Options table inside Product Data > Attributes
+			$(document).on('change', '.wvs-product-attr-type-select', function() {
+				var $select = $(this);
+				var mode = $select.val();
+				var $cell = $select.closest('.wvs-product-attr-settings-cell');
+				var $box = $cell.find('.wvs-per-product-terms-box');
+
+				if (mode === 'color_circle') {
+					$box.show();
+					$box.find('.wvs-col-color-hdr, .wvs-col-color-cell').show();
+					$box.find('.wvs-col-img-hdr, .wvs-col-img-cell').hide();
+				} else if (mode === 'custom_image') {
+					$box.show();
+					$box.find('.wvs-col-color-hdr, .wvs-col-color-cell').hide();
+					$box.find('.wvs-col-img-hdr, .wvs-col-img-cell').show();
+				} else {
+					$box.hide();
+				}
+			});
+
+			// Inline Media Uploader inside Product Data > Attributes
+			$(document).on('click', '.wvs-inline-upload-btn', function(e) {
+				e.preventDefault();
+				var $btn = $(this);
+				var $wrap = $btn.closest('div');
+				var frame = wp.media({
+					title: 'Select Option Swatch Image',
+					button: { text: 'Use Image' },
+					multiple: false
+				});
+				frame.on('select', function() {
+					var attachment = frame.state().get('selection').first().toJSON();
+					var thumbUrl = (attachment.sizes && attachment.sizes.thumbnail) ? attachment.sizes.thumbnail.url : attachment.url;
+					$wrap.find('.wvs-inline-img-id').val(attachment.id);
+					$wrap.find('.wvs-inline-img-preview').html('<img src="' + thumbUrl + '" style="width:100%;height:100%;object-fit:cover;" />');
+				});
+				frame.open();
+			});
+
+			// Toggle Dual Color row on global term screen
 			$('#wvs_is_dual_color').on('change', function() {
 				if ($(this).is(':checked')) {
 					$('.wvs-group-dual-color').show();

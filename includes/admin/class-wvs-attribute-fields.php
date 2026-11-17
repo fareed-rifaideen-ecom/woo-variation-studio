@@ -13,18 +13,8 @@ if ( ! defined( 'ABSPATH' ) ) {
 
 class WVS_Attribute_Fields {
 
-	/**
-	 * Singleton instance.
-	 *
-	 * @var WVS_Attribute_Fields|null
-	 */
 	private static $instance = null;
 
-	/**
-	 * Initialize class.
-	 *
-	 * @return WVS_Attribute_Fields
-	 */
 	public static function init() {
 		if ( null === self::$instance ) {
 			self::$instance = new self();
@@ -32,33 +22,25 @@ class WVS_Attribute_Fields {
 		return self::$instance;
 	}
 
-	/**
-	 * Constructor.
-	 */
 	public function __construct() {
 		// 1. Add Color, Image, Button, and Radio to Products > Attributes Type dropdown.
 		add_filter( 'product_attributes_type_selector', array( $this, 'register_attribute_types' ), 10, 1 );
 
-		// 2. Register term fields (Color picker, Dual color, Image upload) for global attribute taxonomies.
+		// 2. Register term fields for global attribute taxonomies.
 		add_action( 'admin_init', array( $this, 'register_taxonomy_term_hooks' ), 20 );
 
 		// 3. Enqueue Color Picker & Media scripts on Attribute and Product edit screens.
 		add_action( 'admin_enqueue_scripts', array( $this, 'enqueue_admin_scripts' ), 20 );
+		add_action( 'admin_footer', array( $this, 'render_admin_inline_js' ) ); // Moved to construct for reliability
 
-		// 4. Add Swatch Type selector inside Product Data > Attributes tab (works for Custom & Global attributes).
+		// 4. Add Swatch Type selector inside Product Data > Attributes tab.
 		add_action( 'woocommerce_after_product_attribute_settings', array( $this, 'render_product_attribute_swatch_settings' ), 10, 2 );
 
-		// 5. Save Product Data > Attributes swatch settings via AJAX ("Save attributes") and main Product Update.
+		// 5. Save Product Data > Attributes swatch settings via AJAX and main Product Update.
 		add_action( 'wp_ajax_woocommerce_save_attributes', array( $this, 'ajax_save_product_attribute_settings' ), 5 );
 		add_action( 'woocommerce_admin_process_product_object', array( $this, 'save_product_attribute_settings_on_update' ), 20, 1 );
 	}
 
-	/**
-	 * Add custom swatch types to WooCommerce's native Attribute Type selector.
-	 *
-	 * @param array<string, string> $types Existing attribute types.
-	 * @return array<string, string>
-	 */
 	public function register_attribute_types( $types ) {
 		if ( ! is_array( $types ) ) {
 			$types = array();
@@ -70,9 +52,6 @@ class WVS_Attribute_Fields {
 		return $types;
 	}
 
-	/**
-	 * Hook into all WooCommerce attribute taxonomies (`pa_*`).
-	 */
 	public function register_taxonomy_term_hooks() {
 		if ( ! function_exists( 'wc_get_attribute_taxonomies' ) ) {
 			return;
@@ -95,9 +74,6 @@ class WVS_Attribute_Fields {
 		add_action( 'edited_term', array( $this, 'save_term_fields' ), 10, 3 );
 	}
 
-	/**
-	 * Enqueue WP Color Picker and Media Uploader on attribute and product edit screens.
-	 */
 	public function enqueue_admin_scripts() {
 		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
 		if ( ! $screen ) {
@@ -118,39 +94,57 @@ class WVS_Attribute_Fields {
 		wp_enqueue_style( 'wp-color-picker' );
 		wp_enqueue_script( 'wp-color-picker' );
 		wp_enqueue_media();
-
-		add_action( 'admin_footer', array( $this, 'render_admin_inline_js' ) );
 	}
 
-	/**
-	 * Render inline JS for Color Picker and Media Uploader in term screens and Product Data > Attributes.
-	 */
 	public function render_admin_inline_js() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || ( 'product' !== $screen->post_type && false === strpos( (string) $screen->taxonomy, 'pa_' ) && false === strpos( (string) $screen->id, 'product_attribute' ) ) ) {
+			return;
+		}
 		?>
 		<script type="text/javascript">
 		jQuery(function($) {
+			'use strict';
+			
 			function initWvsPickers() {
-				if ($.fn.wpColorPicker) {
-					$('.wvs-color-picker').not('.wp-color-picker').wpColorPicker();
+				try {
+					if (typeof $.fn.wpColorPicker !== 'undefined') {
+						$('.wvs-color-picker').not('.wp-color-picker-added').each(function() {
+							$(this).addClass('wp-color-picker-added').wpColorPicker();
+						});
+					}
+				} catch (err) {
+					console.warn('Woo Variation Studio: Could not init color picker.', err);
 				}
 			}
+			
+			// Init immediately for global term pages
 			initWvsPickers();
-			$(document).on('woocommerce_added_attribute wc-enhanced-select-init ajaxComplete', function() {
+
+			// Safely re-initialize when WooCommerce adds a new attribute row via Backbone
+			$(document).on('woocommerce_added_attribute wc-enhanced-select-init', function() {
 				initWvsPickers();
 			});
 
-			// Toggle custom color rows inside Product Data > Attributes when type changes
-			$(document).on('change', '.wvs-product-attr-type-select', function() {
-				var val = $(this).val();
-				var $wrap = $(this).closest('.wvs-product-attr-settings-box');
-				if (val === 'color') {
-					$wrap.find('.wvs-product-attr-custom-colors').slideDown(150);
-				} else {
-					$wrap.find('.wvs-product-attr-custom-colors').slideUp(150);
+			// Protect WooCommerce AJAX events from halting if our JS has an issue
+			$(document).ajaxComplete(function(event, xhr, settings) {
+				if (settings && settings.data && typeof settings.data === 'string' && settings.data.indexOf('action=woocommerce_add_attribute') !== -1) {
+					setTimeout(initWvsPickers, 200);
 				}
 			});
 
-			// Media uploader for term swatch image
+			// Toggle custom color rows inside Product Data > Attributes
+			$(document).on('change', '.wvs-product-attr-type-select', function() {
+				var val = $(this).val();
+				var $wrap = $(this).closest('.wvs-product-attr-settings-box');
+				if (val === 'color_circle') {
+					$wrap.find('.wvs-product-attr-custom-colors').stop(true,true).slideDown(150);
+				} else {
+					$wrap.find('.wvs-product-attr-custom-colors').stop(true,true).slideUp(150);
+				}
+			});
+
+			// Media uploader for global term swatch image
 			$(document).on('click', '.wvs-upload-image-btn', function(e) {
 				e.preventDefault();
 				var $btn = $(this);
@@ -182,11 +176,6 @@ class WVS_Attribute_Fields {
 		<?php
 	}
 
-	/**
-	 * Render fields on Add New Term screen (`Products > Attributes > Configure terms`).
-	 *
-	 * @param string $taxonomy Taxonomy slug.
-	 */
 	public function render_add_term_fields( $taxonomy ) {
 		?>
 		<div class="form-field">
@@ -209,12 +198,6 @@ class WVS_Attribute_Fields {
 		<?php
 	}
 
-	/**
-	 * Render fields on Edit Term screen.
-	 *
-	 * @param WP_Term $term     Term object.
-	 * @param string  $taxonomy Taxonomy slug.
-	 */
 	public function render_edit_term_fields( $term, $taxonomy ) {
 		if ( ! is_object( $term ) || empty( $term->term_id ) ) {
 			return;
@@ -246,13 +229,6 @@ class WVS_Attribute_Fields {
 		<?php
 	}
 
-	/**
-	 * Save term swatch metadata.
-	 *
-	 * @param int    $term_id  Term ID.
-	 * @param int    $tt_id    Term taxonomy ID.
-	 * @param string $taxonomy Taxonomy slug.
-	 */
 	public function save_term_fields( $term_id, $tt_id = 0, $taxonomy = '' ) {
 		if ( isset( $_POST['wvs_primary_hex'] ) ) {
 			update_term_meta( $term_id, '_wvs_primary_hex', sanitize_hex_color( wp_unslash( $_POST['wvs_primary_hex'] ) ) );
@@ -265,12 +241,6 @@ class WVS_Attribute_Fields {
 		}
 	}
 
-	/**
-	 * Add Swatch Preview column to attribute term list table.
-	 *
-	 * @param array<string, string> $columns Table columns.
-	 * @return array<string, string>
-	 */
 	public function add_swatch_preview_column( $columns ) {
 		if ( ! is_array( $columns ) ) {
 			return $columns;
@@ -285,14 +255,6 @@ class WVS_Attribute_Fields {
 		return $new_cols;
 	}
 
-	/**
-	 * Render Swatch Preview cell in attribute term table.
-	 *
-	 * @param string $content     Column HTML.
-	 * @param string $column_name Column key.
-	 * @param int    $term_id     Term ID.
-	 * @return string
-	 */
 	public function render_swatch_preview_column( $content, $column_name, $term_id ) {
 		if ( 'wvs_preview' !== $column_name ) {
 			return $content;
@@ -319,12 +281,6 @@ class WVS_Attribute_Fields {
 		return '&mdash;';
 	}
 
-	/**
-	 * Render Swatch Display Type dropdown inside Product Data > Attributes tab.
-	 *
-	 * @param WC_Product_Attribute|mixed $attribute Attribute object.
-	 * @param int|string                 $i         Row index.
-	 */
 	public function render_product_attribute_swatch_settings( $attribute, $i = 0 ) {
 		try {
 			if ( ! is_object( $attribute ) || ! method_exists( $attribute, 'get_name' ) ) {
@@ -333,6 +289,12 @@ class WVS_Attribute_Fields {
 
 			$attr_name = (string) $attribute->get_name();
 			if ( '' === $attr_name ) {
+				return;
+			}
+
+			// SAFETY GUARD: Do not render complex UI on unsaved newly added attributes to prevent Backbone.js crash
+			if ( defined( 'DOING_AJAX' ) && DOING_AJAX && isset( $_POST['action'] ) && 'woocommerce_add_attribute' === $_POST['action'] ) {
+				echo '<tr><td colspan="2"><p style="font-size:12px; color:#d63638; margin:8px 0;"><em>' . esc_html__( 'Please click "Save attributes" below first, then you can configure Swatches for this new attribute.', 'woo-variation-studio' ) . '</em></p></td></tr>';
 				return;
 			}
 
@@ -347,7 +309,7 @@ class WVS_Attribute_Fields {
 			$current_type = isset( $attr_config['type'] ) ? (string) $attr_config['type'] : 'auto';
 			$option_hex   = isset( $attr_config['colors'] ) && is_array( $attr_config['colors'] ) ? $attr_config['colors'] : array();
 
-			// Extract readable option strings safely whether taxonomy or custom pipe-separated values.
+			// Extract readable option strings safely
 			$option_labels = array();
 			if ( method_exists( $attribute, 'is_taxonomy' ) && $attribute->is_taxonomy() ) {
 				$terms = method_exists( $attribute, 'get_terms' ) ? $attribute->get_terms() : array();
@@ -376,32 +338,30 @@ class WVS_Attribute_Fields {
 						<p style="margin:0 0 8px;">
 							<strong><?php esc_html_e( 'Variation Studio — Swatch Display Type:', 'woo-variation-studio' ); ?></strong>
 						</p>
-						<select name="wvs_product_attr_type[<?php echo esc_attr( $attr_key ); ?>]" class="wvs-product-attr-type-select" style="min-width:280px;">
-							<option value="auto" <?php selected( $current_type, 'auto' ); ?>><?php esc_html_e( 'Auto-Detect (Use Global Setting / Smart Auto)', 'woo-variation-studio' ); ?></option>
-							<option value="variation_image" <?php selected( $current_type, 'variation_image' ); ?>><?php esc_html_e( 'Variation Image Swatch (Auto-Uses Variation Featured Photo)', 'woo-variation-studio' ); ?></option>
-							<option value="color" <?php selected( $current_type, 'color' ); ?>><?php esc_html_e( 'Color Swatch Circle', 'woo-variation-studio' ); ?></option>
+						<select name="wvs_product_attr_type[<?php echo esc_attr( $attr_key ); ?>]" class="wvs-product-attr-type-select" style="min-width:280px; max-width:100%;">
+							<option value="auto" <?php selected( $current_type, 'auto' ); ?>><?php esc_html_e( 'Auto-Detect (Smart Image or Button)', 'woo-variation-studio' ); ?></option>
+							<option value="variation_image" <?php selected( $current_type, 'variation_image' ); ?>><?php esc_html_e( 'Auto Variation Thumbnail Image', 'woo-variation-studio' ); ?></option>
+							<option value="color_circle" <?php selected( $current_type, 'color_circle' ); ?>><?php esc_html_e( 'Color Swatch Circle', 'woo-variation-studio' ); ?></option>
 							<option value="button" <?php selected( $current_type, 'button' ); ?>><?php esc_html_e( 'Button / Label Box', 'woo-variation-studio' ); ?></option>
 							<option value="radio" <?php selected( $current_type, 'radio' ); ?>><?php esc_html_e( 'Radio Button List', 'woo-variation-studio' ); ?></option>
 							<option value="select" <?php selected( $current_type, 'select' ); ?>><?php esc_html_e( 'Standard Dropdown (Select)', 'woo-variation-studio' ); ?></option>
 						</select>
 
 						<?php if ( ! empty( $option_labels ) ) : ?>
-							<div class="wvs-product-attr-custom-colors" style="<?php echo 'color' === $current_type ? '' : 'display:none;'; ?>margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1;">
-								<p style="margin:0 0 6px;font-size:12px;color:#475569;">
+							<div class="wvs-product-attr-custom-colors" style="<?php echo 'color_circle' === $current_type ? '' : 'display:none;'; ?>margin-top:12px;padding-top:10px;border-top:1px dashed #cbd5e1;">
+								<p style="margin:0 0 8px;font-size:12px;color:#475569;">
 									<?php esc_html_e( 'Assign Hex Colors for each option (e.g. #000000):', 'woo-variation-studio' ); ?>
 								</p>
-								<?php foreach ( $option_labels as $opt_key => $opt_label ) : 
-									$saved_hex = isset( $option_hex[ $opt_key ] ) ? (string) $option_hex[ $opt_key ] : '';
-								?>
-									<div style="display:flex;align-items:center;gap:10px;margin-bottom:6px;">
-										<span style="min-width:180px;font-size:12px;font-weight:600;"><?php echo esc_html( $opt_label ); ?></span>
-										<input type="text"
-											name="wvs_product_attr_colors[<?php echo esc_attr( $attr_key ); ?>][<?php echo esc_attr( $opt_key ); ?>]"
-											value="<?php echo esc_attr( $saved_hex ); ?>"
-											placeholder="#000000"
-											style="width:110px;" />
-									</div>
-								<?php endforeach; ?>
+								<div style="display:grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap:10px;">
+									<?php foreach ( $option_labels as $opt_key => $opt_label ) : 
+										$saved_hex = isset( $option_hex[ $opt_key ] ) ? (string) $option_hex[ $opt_key ] : '';
+									?>
+										<div style="display:flex;align-items:center;gap:8px; background:#fff; padding:6px; border:1px solid #e2e8f0; border-radius:4px;">
+											<input type="color" name="wvs_product_attr_colors[<?php echo esc_attr( $attr_key ); ?>][<?php echo esc_attr( $opt_key ); ?>]" value="<?php echo esc_attr( $saved_hex ? $saved_hex : '#0f172a' ); ?>" style="width:30px;height:30px;padding:0;border:none;cursor:pointer;flex-shrink:0;" />
+											<span style="font-size:12px;font-weight:600;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;" title="<?php echo esc_attr( $opt_label ); ?>"><?php echo esc_html( $opt_label ); ?></span>
+										</div>
+									<?php endforeach; ?>
+								</div>
 							</div>
 						<?php endif; ?>
 					</div>
@@ -409,13 +369,10 @@ class WVS_Attribute_Fields {
 			</tr>
 			<?php
 		} catch ( \Throwable $e ) {
-			// Guard against breaking Product Data > Attributes metabox.
+			// Guard against breaking Product Data > Attributes metabox completely
 		}
 	}
 
-	/**
-	 * Save Product Data > Attributes swatch settings when clicking "Save attributes" (AJAX).
-	 */
 	public function ajax_save_product_attribute_settings() {
 		try {
 			$post_id = isset( $_POST['post_id'] ) ? absint( $_POST['post_id'] ) : 0;
@@ -430,15 +387,10 @@ class WVS_Attribute_Fields {
 
 			$this->persist_product_attribute_settings( $post_id, $parsed );
 		} catch ( \Throwable $e ) {
-			// Prevent AJAX fatal error.
+			// Prevent AJAX fatal error
 		}
 	}
 
-	/**
-	 * Save Product Data > Attributes swatch settings when clicking main Product "Update" button.
-	 *
-	 * @param WC_Product $product Product object.
-	 */
 	public function save_product_attribute_settings_on_update( $product ) {
 		try {
 			if ( ! is_object( $product ) || ! method_exists( $product, 'get_id' ) ) {
@@ -446,16 +398,10 @@ class WVS_Attribute_Fields {
 			}
 			$this->persist_product_attribute_settings( (int) $product->get_id(), $_POST );
 		} catch ( \Throwable $e ) {
-			// Prevent product save error.
+			// Prevent product save error
 		}
 	}
 
-	/**
-	 * Persist `_wvs_product_attr_settings` meta cleanly.
-	 *
-	 * @param int                  $product_id Product ID.
-	 * @param array<string, mixed> $source     Parsed form array.
-	 */
 	private function persist_product_attribute_settings( $product_id, $source ) {
 		if ( $product_id <= 0 || ! is_array( $source ) || empty( $source['wvs_product_attr_type'] ) || ! is_array( $source['wvs_product_attr_type'] ) ) {
 			return;
@@ -485,11 +431,6 @@ class WVS_Attribute_Fields {
 		update_post_meta( $product_id, '_wvs_product_attr_settings', $existing );
 	}
 
-	/**
-	 * Safely determine the current product ID in WP Admin or AJAX context.
-	 *
-	 * @return int
-	 */
 	private function resolve_current_admin_product_id() {
 		global $post, $thepostid;
 		if ( ! empty( $thepostid ) && is_numeric( $thepostid ) ) {

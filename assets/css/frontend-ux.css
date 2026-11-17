@@ -1,113 +1,414 @@
 /
 
-Frontend Swatches, Cross-Attribute Availability & Flatsome UX Styles
+Frontend Swatches, Tooltips, Out-of-Stock Effects & Flatsome UX Styles
+
+File Path: assets/css/frontend-ux.css
 
 @package WooVariationStudio
 */
 
-.wvs-swatch-container {
-margin-bottom: 15px;
+:root {
+--wvs-swatch-width: 42px;
+--wvs-swatch-height: 42px;
+--wvs-primary-color: #0f172a;
+--wvs-border-color: #cbd5e1;
+--wvs-danger-color: #dc2626;
 }
 
-.wvs-swatch-list {
+/* Stack variation table rows cleanly at full width */
+.variations_form table.variations,
+.variations_form table.variations tbody,
+.variations_form table.variations tr,
+.variations_form table.variations th.label,
+.variations_form table.variations td.value {
+display: block;
+width: 100%;
+padding: 0;
+border: none;
+}
+
+.variations_form table.variations tr {
+margin-bottom: 18px;
+}
+
+.variations_form table.variations th.label {
+margin-bottom: 8px;
+text-align: left;
+font-weight: 700;
+font-size: 13px;
+text-transform: uppercase;
+letter-spacing: 0.04em;
+color: var(--wvs-primary-color);
+}
+
+/* Selected Variation Name Beside Attribute Label (e.g. "Colour: Gloss Black") */
+.wvs-selected-variation-name {
+font-weight: 500;
+text-transform: none;
+letter-spacing: normal;
+color: #475569;
+margin-left: 4px;
+}
+
+/* Brand Eyebrow & Spec Subtitle */
+.wvs-pdp-brand-eyebrow {
+margin-bottom: 6px;
+}
+
+.wvs-pdp-brand-eyebrow .wvs-brand-link {
+display: inline-block;
+font-size: 12px;
+font-weight: 700;
+text-transform: uppercase;
+letter-spacing: 0.08em;
+color: #64748b;
+text-decoration: none;
+}
+
+.wvs-pdp-spec-subtitle {
+font-size: 14px;
+color: #475569;
+margin: -4px 0 14px;
+font-weight: 500;
+}
+
+/* Swatches Container & List */
+.wvs-swatches-container {
+margin-top: 4px;
+margin-bottom: 6px;
+}
+
+.wvs-swatches-list {
 display: flex;
 flex-wrap: wrap;
-gap: 8px;
+gap: 10px;
 align-items: center;
 }
 
-.wvs-swatch-item {
+.wvs-swatches-list.wvs-mode-radio {
+flex-direction: column;
+align-items: stretch;
+gap: 8px;
+}
+
+/* Base Swatch Button Reset (Overrides Flatsome button styles cleanly) */
+button.wvs-swatch-item {
+position: relative;
 display: inline-flex;
 align-items: center;
 justify-content: center;
-cursor: pointer;
-position: relative;
-transition: all 0.2s ease-in-out;
-user-select: none;
-}
-
-/* Shape: Circle (Colour Swatches) */
-.wvs-swatch-item.wvs-shape-circle {
-width: 38px;
-height: 38px;
-border-radius: 50%;
-border: 2px solid #e2e8f0;
-box-shadow: inset 0 0 0 1px rgba(0,0,0,0.05);
-}
-
-.wvs-swatch-item.wvs-shape-circle.selected {
-border-color: #0f172a;
-box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0f172a;
-}
-
-/* Shape: Image Swatches */
-.wvs-swatch-item.wvs-shape-image {
-width: 52px;
-height: 52px;
-border-radius: 6px;
-background-size: cover;
-background-position: center;
-border: 2px solid #e2e8f0;
-}
-
-.wvs-swatch-item.wvs-shape-image.selected {
-border-color: #0f172a;
-box-shadow: 0 0 0 2px #fff, 0 0 0 4px #0f172a;
-}
-
-/* Shape: Button Boxes (Sizes & Specs) */
-.wvs-swatch-item.wvs-shape-button {
-padding: 8px 16px;
+padding: 0;
+margin: 0;
 background: #ffffff;
-color: #0f172a !important;
-border: 1.5px solid #cbd5e1;
-border-radius: 4px;
-font-size: 13px;
-font-weight: 600;
-min-width: 44px;
-text-align: center;
+border: 1.5px solid var(--wvs-border-color);
+color: var(--wvs-primary-color) !important;
+cursor: pointer;
+transition: all 0.18s ease-in-out;
+user-select: none;
+box-shadow: none;
+line-height: 1;
+min-height: 0;
+overflow: visible;
 }
 
-.wvs-swatch-item.wvs-shape-button.selected {
-background: #0f172a !important;
-color: #ffffff !important;
-border-color: #0f172a !important;
+button.wvs-swatch-item:hover:not(.is-oos-in-combo) {
+border-color: var(--wvs-primary-color);
+transform: translateY(-1px);
 }
 
-/* Out of stock strike-through state */
-.wvs-swatch-item.is-oos-in-combo {
-opacity: 0.4;
-text-decoration: line-through;
-pointer-events: none;
-position: relative;
+/* Color & Image Swatch Dimensions */
+button.wvs-swatch-item.wvs-swatch-type-color,
+button.wvs-swatch-item.wvs-swatch-type-image {
+width: var(--wvs-swatch-width, 42px);
+height: var(--wvs-swatch-height, 42px);
+padding: 3px;
 }
-.wvs-swatch-item.is-oos-in-combo::after {
-content: "";
-position: absolute;
-top: 50%;
-left: 0;
+
+/* Shape Variations: Rounded vs. Squared */
+button.wvs-swatch-item.wvs-swatch-type-color.wvs-shape-rounded {
+border-radius: 50%;
+}
+
+button.wvs-swatch-item.wvs-swatch-type-image.wvs-shape-rounded,
+button.wvs-swatch-item.wvs-swatch-type-text.wvs-shape-rounded,
+button.wvs-swatch-item.wvs-swatch-type-radio.wvs-shape-rounded {
+border-radius: 6px;
+}
+
+button.wvs-swatch-item.wvs-shape-squared,
+button.wvs-swatch-item.wvs-shape-squared .wvs-swatch-circle,
+button.wvs-swatch-item.wvs-shape-squared .wvs-swatch-thumb {
+border-radius: 2px !important;
+}
+
+/* Inner Color Circle & Image Thumbnail */
+.wvs-swatch-circle {
+display: block;
 width: 100%;
-height: 1.5px;
-background: #ef4444;
-transform: rotate(-15deg);
+height: 100%;
+border-radius: 50%;
+box-shadow: inset 0 0 0 1px rgba(0, 0, 0, 0.12);
 }
 
-/* Tooltip */
-.wvs-tooltip {
-display: none;
-position: absolute;
-bottom: 120%;
-left: 50%;
-transform: translateX(-50%);
-background: #0f172a;
-color: #fff;
-padding: 4px 8px;
-font-size: 11px;
-border-radius: 3px;
-white-space: nowrap;
-z-index: 10;
+.wvs-swatch-thumb {
+display: flex;
+align-items: center;
+justify-content: center;
+width: 100%;
+height: 100%;
+border-radius: 4px;
+overflow: hidden;
+background: #f8fafc;
 }
-.wvs-swatch-item:hover .wvs-tooltip {
+
+.wvs-swatch-thumb img {
+width: 100%;
+height: 100%;
+object-fit: cover;
 display: block;
 }
 
+/* Button / Label Swatches (Sizes, Groupsets, Wheelsets) */
+button.wvs-swatch-item.wvs-swatch-type-text {
+min-width: var(--wvs-swatch-width, 44px);
+min-height: var(--wvs-swatch-height, 38px);
+padding: 8px 16px;
+font-size: 13px;
+font-weight: 600;
+background: #ffffff !important;
+color: var(--wvs-primary-color) !important;
+}
+
+/* Radio Swatches */
+button.wvs-swatch-item.wvs-swatch-type-radio {
+width: 100%;
+justify-content: flex-start;
+padding: 10px 14px;
+gap: 10px;
+font-size: 13px;
+font-weight: 600;
+background: #ffffff !important;
+}
+
+.wvs-radio-indicator {
+width: 16px;
+height: 16px;
+border-radius: 50%;
+border: 2px solid #94a3b8;
+display: inline-block;
+position: relative;
+flex-shrink: 0;
+}
+
+button.wvs-swatch-item.wvs-swatch-type-radio.selected .wvs-radio-indicator {
+border-color: var(--wvs-primary-color);
+}
+
+button.wvs-swatch-item.wvs-swatch-type-radio.selected .wvs-radio-indicator::after {
+content: "";
+position: absolute;
+top: 3px;
+left: 3px;
+width: 6px;
+height: 6px;
+border-radius: 50%;
+background: var(--wvs-primary-color);
+}
+
+/* Active / Selected Swatch States */
+button.wvs-swatch-item.selected {
+border-color: var(--wvs-primary-color) !important;
+box-shadow: 0 0 0 1.5px var(--wvs-primary-color);
+}
+
+button.wvs-swatch-item.wvs-swatch-type-text.selected {
+background: var(--wvs-primary-color) !important;
+color: #ffffff !important;
+}
+
+/* Selected Checkmark Badge on Color & Image Swatches */
+.wvs-swatch-check {
+display: none;
+position: absolute;
+top: -5px;
+right: -5px;
+width: 16px;
+height: 16px;
+border-radius: 50%;
+background: var(--wvs-primary-color);
+color: #ffffff;
+font-size: 10px;
+line-height: 16px;
+text-align: center;
+z-index: 4;
+box-shadow: 0 1px 3px rgba(0, 0, 0, 0.25);
+}
+
+button.wvs-swatch-item.wvs-swatch-type-color.selected .wvs-swatch-check,
+button.wvs-swatch-item.wvs-swatch-type-image.selected .wvs-swatch-check {
+display: block;
+}
+
+/* Floating Hover Tooltip */
+.wvs-swatch-tooltip {
+position: absolute;
+bottom: calc(100% + 8px);
+left: 50%;
+transform: translateX(-50%) translateY(4px);
+background: var(--wvs-primary-color);
+color: #ffffff;
+padding: 5px 10px;
+font-size: 11px;
+font-weight: 600;
+border-radius: 4px;
+white-space: nowrap;
+pointer-events: none;
+opacity: 0;
+visibility: hidden;
+transition: all 0.16s ease;
+z-index: 25;
+box-shadow: 0 4px 10px rgba(0, 0, 0, 0.15);
+}
+
+.wvs-swatch-tooltip::after {
+content: "";
+position: absolute;
+top: 100%;
+left: 50%;
+transform: translateX(-50%);
+border-width: 5px;
+border-style: solid;
+border-color: var(--wvs-primary-color) transparent transparent transparent;
+}
+
+button.wvs-swatch-item:hover .wvs-swatch-tooltip {
+opacity: 1;
+visibility: visible;
+transform: translateX(-50%) translateY(0);
+}
+
+/* Out-of-Stock / Unavailable Visual Behaviors: Cross Out, Blur, or Hide */
+.wvs-swatch-oos-slash {
+display: none;
+position: absolute;
+inset: 0;
+pointer-events: none;
+overflow: hidden;
+border-radius: inherit;
+}
+
+.wvs-swatch-oos-slash::before {
+content: "";
+position: absolute;
+top: 50%;
+left: -15%;
+width: 130%;
+height: 2px;
+background: var(--wvs-danger-color);
+transform: rotate(-35deg);
+box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.8);
+}
+
+/* Effect 1: Cross Out (Default) */
+body.wvs-oos-effect-cross button.wvs-swatch-item.is-oos-in-combo,
+body:not(.wvs-oos-effect-blur):not(.wvs-oos-effect-hide) button.wvs-swatch-item.is-oos-in-combo {
+opacity: 0.42;
+}
+
+body.wvs-oos-effect-cross button.wvs-swatch-item.is-oos-in-combo .wvs-swatch-oos-slash,
+body:not(.wvs-oos-effect-blur):not(.wvs-oos-effect-hide) button.wvs-swatch-item.is-oos-in-combo .wvs-swatch-oos-slash {
+display: block;
+}
+
+/* Effect 2: Blur / Fade */
+body.wvs-oos-effect-blur button.wvs-swatch-item.is-oos-in-combo {
+opacity: 0.32;
+filter: grayscale(85%) blur(0.4px);
+}
+
+/* Effect 3: Hide Completely */
+body.wvs-oos-effect-hide button.wvs-swatch-item.is-oos-in-combo {
+display: none !important;
+}
+
+/* Strict Lock Mode Cursor */
+button.wvs-swatch-item.is-oos-locked {
+cursor: not-allowed !important;
+}
+
+/* Desktop Sticky Product Gallery for Flatsome */
+@media (min-width: 1025px) {
+body.wvs-sticky-desktop-gallery .product-main .row {
+align-items: flex-start !important;
+}
+body.wvs-sticky-desktop-gallery .product-gallery {
+position: sticky !important;
+top: 95px;
+align-self: flex-start;
+}
+}
+
+/* Delivery Switcher Block */
+.wvs-delivery-switcher-block {
+display: grid;
+grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+gap: 10px;
+margin-top: 16px;
+}
+
+.wvs-delivery-option {
+display: flex;
+align-items: center;
+gap: 10px;
+padding: 12px 14px;
+border: 1.5px solid var(--wvs-border-color);
+border-radius: 6px;
+cursor: pointer;
+background: #ffffff;
+transition: all 0.16s ease;
+}
+
+.wvs-delivery-option.is-selected {
+border-color: var(--wvs-primary-color);
+background: #f8fafc;
+}
+
+.wvs-delivery-radio {
+width: 16px;
+height: 16px;
+border-radius: 50%;
+border: 2px solid #94a3b8;
+position: relative;
+flex-shrink: 0;
+}
+
+.wvs-delivery-option.is-selected .wvs-delivery-radio {
+border-color: var(--wvs-primary-color);
+}
+
+.wvs-delivery-option.is-selected .wvs-delivery-radio::after {
+content: "";
+position: absolute;
+top: 3px;
+left: 3px;
+width: 6px;
+height: 6px;
+border-radius: 50%;
+background: var(--wvs-primary-color);
+}
+
+.wvs-delivery-info {
+display: flex;
+flex-direction: column;
+line-height: 1.3;
+}
+
+.wvs-delivery-info strong {
+font-size: 13px;
+color: var(--wvs-primary-color);
+}
+
+.wvs-delivery-info span {
+font-size: 12px;
+color: #64748b;
+}
